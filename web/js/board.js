@@ -446,7 +446,15 @@ export function createBoard(container, opts = {}) {
   }
 
   function onPointerDown(ev) {
-    if (promoOpen) { closePromotion(null); return; }
+    /* El dialogo de promocion vive dentro del tablero, asi que su pointerdown
+       burbujea hasta aqui. Si se cancelaba sin mirar de donde venia, el
+       dialogo desaparecia antes de que el boton recibiera su click y la
+       promocion se anulaba siempre: el peon no llegaba nunca a coronar. */
+    if (promoOpen) {
+      if (promoOpen.node.contains(ev.target)) return;
+      closePromotion(null);
+      return;
+    }
 
     const name = pointToSquare(ev.clientX, ev.clientY);
     if (!name) return;
