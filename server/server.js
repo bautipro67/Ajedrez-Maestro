@@ -28,7 +28,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 
 const DEFAULT_PORT = 8080;
-const DEFAULT_RATING = 1200;
+/* Misma puntuacion de partida que en el perfil local: empezar en sitios
+   distintos segun donde juegues no tendria ningun sentido. */
+const DEFAULT_RATING = 300;
 const RATING_CATEGORIES = ['bullet', 'blitz', 'rapid', 'classical'];
 
 const MIN_BASE = 10;             // seconds

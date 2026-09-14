@@ -8,6 +8,9 @@
 
 /** Puntuacion minima que puede alcanzar un jugador. */
 export const RATING_FLOOR = 100;
+
+/** Puntuacion con la que empieza todo el mundo, antes de jugar nada. */
+export const STARTING_RATING = 300;
 /** Partidas necesarias para dejar de ser provisional (K = 40). */
 export const PROVISIONAL_GAMES = 30;
 /** A partir de esta puntuacion el factor K baja a 10 de forma permanente. */

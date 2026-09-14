@@ -5,7 +5,7 @@
  * in-memory store instead of throwing.
  */
 
-import { applyResult } from './elo.js';
+import { applyResult, STARTING_RATING } from './elo.js';
 import { evaluateAchievements } from './achievements.js';
 
 const ROOT_KEY = 'ajedrezMaestro.v1';
@@ -81,7 +81,7 @@ function randomId(prefix) {
 export function defaultProfile() {
   const ratings = {};
   for (const c of CATEGORIES) {
-    ratings[c] = { rating: 800, games: 0, rd: 350, peak: 800, history: [] };
+    ratings[c] = { rating: STARTING_RATING, games: 0, rd: 350, peak: STARTING_RATING, history: [] };
   }
   return {
     version: 1,
@@ -127,7 +127,7 @@ export function loadProfile() {
   const p = readRoot().profile;
   // Heal profiles written by older versions.
   for (const c of CATEGORIES) {
-    if (!p.ratings[c]) p.ratings[c] = { rating: 800, games: 0, rd: 350, peak: 800, history: [] };
+    if (!p.ratings[c]) p.ratings[c] = { rating: STARTING_RATING, games: 0, rd: 350, peak: STARTING_RATING, history: [] };
   }
   if (!p.stats) p.stats = defaultProfile().stats;
   if (!Array.isArray(p.achievements)) p.achievements = [];
@@ -218,7 +218,7 @@ export function recordResult({
   const root = readRoot();
   const profile = root.profile;
   for (const c of CATEGORIES) {
-    if (!profile.ratings[c]) profile.ratings[c] = { rating: 800, games: 0, rd: 350, peak: 800, history: [] };
+    if (!profile.ratings[c]) profile.ratings[c] = { rating: STARTING_RATING, games: 0, rd: 350, peak: STARTING_RATING, history: [] };
   }
   const bucket = profile.ratings[category] || profile.ratings.bots;
   const ratingBefore = bucket.rating;

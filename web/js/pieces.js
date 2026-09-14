@@ -29,11 +29,15 @@ const CLASSIC = {
     <path d="M17.8 18.5c1.4.9 3 1.4 4.7 1.4s3.3-.5 4.7-1.4c1.7 1.3 2.8 3.3 2.8 5.6 0 1.9-.8 3.6-2.1 4.9 2.8 2 4.9 5 5.8 8.6H11.3c.9-3.6 3-6.6 5.8-8.6-1.3-1.3-2.1-3-2.1-4.9 0-2.3 1.1-4.3 2.8-5.6z"/>
     <rect x="10.6" y="36.8" width="23.8" height="4.2" rx="2.1"/>`,
 
+  /* Perfil de caballo mirando a la izquierda: oreja en punta arriba, testuz
+     inclinada, hocico abajo a la izquierda y crin bajando por la nuca. El
+     anterior era una silueta redondeada sin oreja que no se leia como caballo. */
   [KNIGHT]: (s) => `
-    <path d="M23.9 7.9c-1.5-1.9-4.2-2.4-6.3-1.1-.9.6-1.6 1.4-2 2.4-1.1-.5-2.4-.3-3.3.5-3.1 2.6-5.2 6.1-6.1 10.1-.4 1.8-.6 3.7-.5 5.6.1 1.2 1.1 2.1 2.3 2.1.8 0 1.5-.4 2-1l2.6-3.4.7 2.2c.3 1 1.3 1.7 2.4 1.5l3-.4c-2.3 3.1-3.9 6.7-4.5 10.5l-.5 3.1h18.6c1-6.2 1.4-11.3 1.2-15.2-.3-6.3-3.1-11.4-8.2-15.2-.4-.3-.9-.5-1.4-.7z"/>
-    <circle cx="17.4" cy="13.4" r="1.45" fill="${s.detail}" stroke="none"/>
-    <path d="M11.6 21.5c1.5-.5 2.8-1.3 3.9-2.4" fill="none" stroke="${s.detail}" stroke-width="1.15" stroke-linecap="round"/>
-    <path d="M25.4 12.1c2.2 2.4 3.5 5.3 3.9 8.6" fill="none" stroke="${s.detail}" stroke-width="1.1" stroke-linecap="round" opacity=".55"/>
+    <path d="M9.6 24.6C10.8 20.6 13.8 17 18.2 14.4c3.8-2.3 7.2-3.4 10.4-3.2L29.8 5.8l3.8 4.8c2.8 3 4.2 7 4.2 11.8 0 5.8-1.8 10.5-4.4 14.4H13.6c-.2-4.6 1.4-8.4 4.6-11.4-2 .4-3.8 1.4-5.4 3-1.4 1.2-3.2.8-3.9-.8-.6-1.2-.3-2.2.7-3z"/>
+    <circle cx="27.4" cy="15.6" r="1.5" fill="${s.detail}" stroke="none"/>
+    <path d="M11.9 25.8h2.2" fill="none" stroke="${s.detail}" stroke-width="1.3" stroke-linecap="round"/>
+    <path d="M29.6 11.4c2.6 3.2 3.9 7.1 3.9 11.7 0 3.4-.7 6.6-2.1 9.6" fill="none" stroke="${s.detail}" stroke-width="1.15" stroke-linecap="round" opacity=".5"/>
+    <path d="M18.6 16.2c-2.6 1.8-4.6 3.9-6 6.3" fill="none" stroke="${s.detail}" stroke-width="1.1" stroke-linecap="round" opacity=".45"/>
     <rect x="10.6" y="36.8" width="23.8" height="4.2" rx="2.1"/>`,
 
   [BISHOP]: (s) => `
