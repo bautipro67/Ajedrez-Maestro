@@ -673,8 +673,10 @@ export function mount(root, ctx, params = {}) {
   /* Opening name is a nice-to-have: loaded apart so it never delays the board. */
   import('../book.js').then(({ openingName }) => {
     if (destroyed || !line.length || startFen !== START_FEN) return;
-    const name = openingName(line.map((m) => m.san));
-    if (name) subtitle.textContent = `${subtitle.textContent} · ${name}`;
+    /* `openingName` devuelve {eco, name}, no una cadena: interpolar el objeto
+       entero escribia «[object Object]» en la cabecera. */
+    const hit = openingName(line.map((m) => m.san));
+    if (hit) subtitle.textContent = `${subtitle.textContent} · ${hit.eco} ${hit.name}`;
   }).catch(() => { /* the opening name is optional */ });
 
   /* -------------------------------- unmount -------------------------------- */

@@ -791,7 +791,14 @@ export function mount(root, ctx, params = {}) {
         onClick: () => ctx.navigate(`#/torneo/${params.tournamentId}`),
       });
     }
-    actions.push({ label: 'Analizar', onClick: () => ctx.navigate('#/analisis') });
+    /* `recordResult` devuelve la partida ya guardada: con su id el análisis la
+       carga entera y se puede revisar jugada a jugada. Sin id se abría un
+       tablero vacío, que no es revisar nada. */
+    const guardada = record && record.game && record.game.id;
+    actions.push({
+      label: guardada ? 'Revisar la partida' : 'Analizar',
+      onClick: () => ctx.navigate(guardada ? `#/analisis/${record.game.id}` : '#/analisis'),
+    });
 
     modal({ title, body, actions, dismissable: true });
   }

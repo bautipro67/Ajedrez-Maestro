@@ -422,6 +422,7 @@ function historyCard(ctx, download) {
         el('th', { text: 'Modo' }),
         el('th', { text: 'Resultado' }),
         el('th', { class: 'num', text: 'Elo' }),
+        el('th', { class: 'num', text: 'Revisar' }),
         el('th', { class: 'num', text: 'PGN' }))),
     tbody);
 
@@ -457,6 +458,15 @@ function historyCard(ctx, download) {
           resultBadge(game.result),
           game.rated === false ? el('span', { class: 'tiny faint', text: 'amistosa' }) : null)),
         el('td', { class: 'num' }, deltaSpan(game.delta)),
+        /* Llevar el id al analisis es lo que convierte el historial en algo
+           util: se abre la partida entera y se puede repasar jugada a jugada. */
+        el('td', { class: 'num' }, game.id
+          ? button('Revisar', {
+            size: 'sm',
+            title: 'Abrir esta partida en el analisis',
+            onClick: () => ctx.navigate(`#/analisis/${game.id}`),
+          })
+          : el('span', { class: 'tiny faint', text: '—' })),
         el('td', { class: 'num' }, pgnButton(ctx, game, download))));
     }
     counter.textContent = `Mostrando ${Math.min(shown, games.length)} de ${games.length} partidas`;

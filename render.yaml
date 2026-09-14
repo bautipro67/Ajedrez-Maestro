@@ -1,0 +1,26 @@
+# Despliegue del servidor de partidas en Render (render.com).
+#
+# No hay nada que compilar ni que instalar: el proyecto no tiene dependencias.
+# El servidor lee el puerto de la variable PORT, que Render define sola, y
+# sirve también los ficheros de web/, así que con esto la aplicación entera
+# queda publicada y el modo online empieza a funcionar.
+#
+# El cliente elige `wss://` automáticamente cuando la página va por HTTPS,
+# de modo que no hay que tocar nada del código.
+#
+# Aviso del plan gratuito: la instancia se duerme tras un rato sin visitas y
+# la primera carga después tarda unos segundos en despertar. Las partidas en
+# curso se pierden al dormirse, porque viven en memoria.
+
+services:
+  - type: web
+    name: ajedrez-maestro
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: "echo 'sin dependencias: nada que instalar'"
+    startCommand: "node server/server.js"
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
