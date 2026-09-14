@@ -1,0 +1,11 @@
+# Estado que genera el servidor al ejecutarse (usuarios, tokens, clasificación).
+# No es código: se crea solo al arrancar y las pruebas lo llenan de basura.
+server/data/
+
+# El proyecto no tiene dependencias, pero por si alguien instala algo.
+node_modules/
+
+# Basura del sistema
+.DS_Store
+Thumbs.db
+*.log

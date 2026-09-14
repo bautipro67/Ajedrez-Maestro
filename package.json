@@ -1,0 +1,15 @@
+{
+  "name": "ajedrez-maestro",
+  "version": "1.0.0",
+  "description": "Ajedrez Maestro (Master Chess): aplicacion de ajedrez completa: local, contra bots, online y torneos con sistema Elo.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node test/run-tests.js",
+    "perft": "node test/perft.test.js",
+    "bench": "node test/bench.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {}
+}

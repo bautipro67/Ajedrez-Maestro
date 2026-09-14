@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Ajedrez Maestro — juega al ajedrez online, contra bots con personalidad, en local o en torneos, con sistema de puntuación Elo.">
+  <title>Ajedrez Maestro</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 45 45'%3E%3Crect width='45' height='45' rx='9' fill='%23739552'/%3E%3Cg fill='%23FAFAF8' stroke='%232A2724' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M22.5 6.5v8.4M18.4 9.9h8.2' fill='none' stroke-width='3.2' stroke-linecap='round'/%3E%3Cpath d='M22.5 15.4c-3.9 0-7 2.7-7 6.1 0 1.7.8 3.2 2 4.3h10c1.2-1.1 2-2.6 2-4.3 0-3.4-3.1-6.1-7-6.1z'/%3E%3Cpath d='M13.9 25.4h17.2l1.6 6.6H12.3z'/%3E%3Cpath d='M12.1 31.8h20.8c1.3 3.1 3.4 5.4 6.1 7H6c2.7-1.6 4.8-3.9 6.1-7z'/%3E%3C/g%3E%3C/svg%3E">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a class="topbar__brand" href="#/" aria-label="Ajedrez Maestro — inicio">
+        <svg viewBox="0 0 45 45" aria-hidden="true">
+          <rect width="45" height="45" rx="9" fill="#739552"/>
+          <g fill="#FAFAF8" stroke="#2A2724" stroke-width="1.5" stroke-linejoin="round">
+            <path d="M22.5 6.5v8.4M18.4 9.9h8.2" fill="none" stroke-width="3.2" stroke-linecap="round"/>
+            <path d="M22.5 15.4c-3.9 0-7 2.7-7 6.1 0 1.7.8 3.2 2 4.3h10c1.2-1.1 2-2.6 2-4.3 0-3.4-3.1-6.1-7-6.1z"/>
+            <path d="M13.9 25.4h17.2l1.6 6.6H12.3z"/>
+            <path d="M12.1 31.8h20.8c1.3 3.1 3.4 5.4 6.1 7H6c2.7-1.6 4.8-3.9 6.1-7z"/>
+          </g>
+        </svg>
+        <span>Ajedrez Maestro</span>
+      </a>
+
+      <nav class="topbar__nav" id="nav" aria-label="Secciones">
+        <a class="topbar__link" href="#/bots">Contra la máquina</a>
+        <a class="topbar__link" href="#/online">Online</a>
+        <a class="topbar__link" href="#/jugar/local">Local</a>
+        <a class="topbar__link" href="#/torneos">Torneos</a>
+        <a class="topbar__link" href="#/analisis">Análisis</a>
+      </nav>
+
+      <div class="topbar__user" id="topbar-user"></div>
+    </header>
+
+    <main class="main" id="app-root" tabindex="-1">
+      <div class="screen center" style="min-height:50vh">
+        <div class="col center gap-16">
+          <div class="spinner" style="width:30px;height:30px;border-width:3px"></div>
+          <p class="muted">Cargando Ajedrez Maestro…</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+  <div id="modal-host"></div>
+
+  <noscript>
+    <div style="padding:24px;text-align:center">
+      Ajedrez Maestro necesita JavaScript activado para funcionar.
+    </div>
+  </noscript>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

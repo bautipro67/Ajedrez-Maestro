@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ajedrez",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/server.js"],
+      "port": 8080
+    },
+    {
+      "name": "estatico",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["_preview-server.mjs"],
+      "port": 8099
+    }
+  ]
+}
