@@ -413,6 +413,11 @@ a:hover { text-decoration: underline; }
 .game-board-col { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: stretch; }
 .game-board-col.no-eval { grid-template-columns: minmax(0, 1fr); }
 .game-board-col > .board-stack { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* El tablero es cuadrado, asi que su altura la manda el ancho. En pantallas
+   anchas pero bajas (un portatil cualquiera) crecia hasta salirse por abajo y
+   habia que scrollear en plena partida para ver la primera fila. Se le pone
+   tope por la altura de la ventana; en pantallas altas no cambia nada. */
+.game-board-col > .board-stack { max-width: calc(100vh - var(--topbar-h) - 76px); }
 
 .evalbar {
   position: relative;
