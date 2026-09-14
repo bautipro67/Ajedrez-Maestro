@@ -10,6 +10,7 @@ import {
   deltaSpan, spinner, formatDate,
 } from './components.js';
 import { createGame } from '../game.js';
+import { uciToMove, moveToSan } from '../chess.js';
 import { createBoard } from '../board.js';
 import { createClock, TIME_CONTROLS, CATEGORY_NAMES, timeCategory, formatClock } from '../clock.js';
 import { botById, botLine } from '../bots.js';
@@ -18,7 +19,7 @@ import { deserialize, serialize, reportResult, tournamentPlayer } from '../tourn
 import { analyzeGame, achievementById } from '../achievements.js';
 import { accuracyFromLoss } from '../ai.js';
 import { openingName } from '../book.js';
-import { ratingTier } from '../elo.js';
+import { ratingTier, STARTING_RATING } from '../elo.js';
 
 const COLOR_NAME = { w: 'blancas', b: 'negras' };
 
@@ -47,7 +48,7 @@ function humanPlayer(profile, category) {
   return {
     kind: 'human',
     name: profile?.name || 'Invitado',
-    rating: bucket ? Math.round(bucket.rating) : 800,
+    rating: bucket ? Math.round(bucket.rating) : STARTING_RATING,
     avatarSeed: profile?.avatarSeed || profile?.name || 'invitado',
   };
 }
@@ -287,6 +288,9 @@ export function mount(root, ctx, params = {}) {
       animationMs: settings.animations === false ? 0 : 180,
       onMoveAttempt: handleMoveAttempt,
       onPromotion: settings.autoQueen ? () => Promise.resolve('q') : null,
+      /* Premovimiento: solo tiene sentido con reloj y contra alguien que
+         tarda en responder, asi que en local no se ofrece. */
+      onPremove: settings.premove === false || mode === 'local' ? null : handlePremove,
     });
     if (bar) bar.setOrientation(myColor === 'b' ? 'black' : 'white');
 
@@ -306,10 +310,67 @@ export function mount(root, ctx, params = {}) {
 
   async function handleMoveAttempt(from, to, promotion) {
     if (!myTurn() || thinking) return false;
+
+    /* Con «confirmar jugada» activado se pregunta antes de mover. Hay que
+       consultarlo aqui: el ajuste existia en la pantalla de ajustes y no lo
+       leia nadie, asi que el interruptor no hacia nada. */
+    if (settings.confirmMove) {
+      const san = sanPreview(from, to, promotion);
+      const ok = await confirmDialog({
+        title: '¿Confirmás la jugada?',
+        message: san ? `Vas a jugar ${san}.` : `Vas a mover de ${from} a ${to}.`,
+        confirmLabel: 'Jugar',
+      });
+      if (!ok || game.status.over || !myTurn()) return false;
+    }
+
     const res = game.tryMove(from, to, promotion || null);
     if (!res.ok) return false;
     afterMove(res.entry, 'human');
     return true;
+  }
+
+  /** Notación de una jugada antes de hacerla, para poder preguntar por ella. */
+  function sanPreview(from, to, promotion) {
+    try {
+      const uci = from + to + (promotion || '');
+      const move = uciToMove(game.pos, uci);
+      return move === -1 ? null : moveToSan(game.pos, move);
+    } catch {
+      return null;
+    }
+  }
+
+  /* --------------------------- premovimiento ---------------------------- */
+
+  let premove = null;
+  const premoveEnabled = settings.premove !== false && mode !== 'local';
+
+  function handlePremove(from, to) {
+    if (game.status.over || myTurn()) return;
+    premove = { from, to };
+    board.setPremove(from, to);
+    setStatus('Premovimiento preparado. Se juega en cuanto responda tu rival.');
+  }
+
+  function clearPremove() {
+    premove = null;
+    if (board) board.clearPremove();
+  }
+
+  /** Intenta soltar el premovimiento guardado en cuanto vuelve a ser tu turno. */
+  function runPremove() {
+    if (!premove || !myTurn() || thinking) return;
+    const { from, to } = premove;
+    clearPremove();
+    /* Un premovimiento no puede abrir el dialogo de promocion: no hay a quien
+       preguntar todavia, asi que corona dama, que es lo habitual. */
+    const res = game.tryMove(from, to, 'q');
+    if (res.ok) afterMove(res.entry, 'human');
+    else {
+      sync({ animate: false });
+      ctx.toast?.('Tu premovimiento ya no era legal.', 'warn');
+    }
   }
 
   function afterMove(entry, who) {
@@ -336,6 +397,8 @@ export function mount(root, ctx, params = {}) {
       say(botLine(bot, 'check', mulberry32(seedBase + game.ply())));
     }
     scheduleBot();
+    /* Si el rival acaba de mover y habia un premovimiento esperando, va ahora. */
+    if (who !== 'human') runPremove();
   }
 
   /* --------------------------------- bots -------------------------------- */
@@ -403,12 +466,23 @@ export function mount(root, ctx, params = {}) {
     const index = live ? game.history.length - 1 : viewIndex;
     board.setPosition(live ? game.getFen() : game.fenAt(index), {
       animate,
-      lastMove: game.lastMoveSquares(index),
+      /* `highlightLastMove` tampoco lo leia nadie: la ultima jugada se
+         resaltaba siempre, tuvieras el ajuste puesto o no. */
+      lastMove: settings.highlightLastMove === false ? null : game.lastMoveSquares(index),
     });
 
+    const mias = myColor === 'w' ? 'white' : 'black';
     if (live && !game.status.over && myTurn()) {
       board.setLegalMoves(game.legalMovesMap());
       board.setInteractive(true);
+      board.setMovableColor(mode === 'local' ? 'both' : mias);
+    } else if (live && !game.status.over && premoveEnabled) {
+      /* Turno del rival: el tablero tiene que seguir escuchando o el
+         premovimiento no puede llegar nunca. Sin jugadas legales, todo intento
+         cae en el camino de `onPremove`. */
+      board.setLegalMoves(new Map());
+      board.setInteractive(true);
+      board.setMovableColor(mias);
     } else {
       board.setLegalMoves(new Map());
       board.setInteractive(false);
@@ -468,6 +542,12 @@ export function mount(root, ctx, params = {}) {
     }
     const turn = game.turn();
     const player = playerFor(turn);
+    /* El aviso de premovimiento lo escribia handlePremove, pero `sync()` corre
+       despues y lo pisaba: hay que contarlo aqui para que se quede. */
+    if (premove && !myTurn()) {
+      setStatus(`Premovimiento listo (${premove.from}→${premove.to}). Se juega en cuanto responda tu rival.`);
+      return;
+    }
     if (game.inCheck()) setStatus(`Jaque a las ${COLOR_NAME[turn]}.`);
     else setStatus(`Juegan las ${COLOR_NAME[turn]}${player?.kind === 'human' && mode !== 'local' ? ' — te toca' : ''}.`);
   }
@@ -579,6 +659,7 @@ export function mount(root, ctx, params = {}) {
         onClick: () => {
           const plies = mode === 'local' ? 1 : 2;
           game.takeback(Math.min(plies, game.ply()));
+          clearPremove();
           viewIndex = -2;
           sync({ animate: true });
           renderControls();
@@ -670,6 +751,7 @@ export function mount(root, ctx, params = {}) {
   function finish() {
     if (ended || !game.status.over) return;
     ended = true;
+    clearPremove();
     if (clock) clock.pause();
     thinking = false;
     sync({ animate: true });
