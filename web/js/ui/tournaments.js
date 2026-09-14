@@ -493,10 +493,17 @@ export function mount(root, ctx, params = {}) {
     for (const game of games) {
       const white = tournamentPlayer(t, game.white);
       const black = game.black ? tournamentPlayer(t, game.black) : null;
+      /* Un descanso no es una partida: el motor lo marca con result 'bye', y
+         pintarlo como resultado dejaba en pantalla «Fulano bye descansa». */
+      const descansa = !black || game.result === 'bye';
       const row = el('div', { class: `pairing${isHumanGame(t, game) ? ' is-yours' : ''}` },
         el('span', { class: 'grow truncate', text: white ? white.name : '—' }),
-        el('span', { class: 'mono', text: game.result === null ? 'vs' : game.result }),
-        el('span', { class: 'grow truncate', text: black ? black.name : 'descansa' }));
+        descansa
+          ? el('span', { class: 'muted small grow', text: 'descansa esta ronda' })
+          : el('span', { class: 'mono', text: game.result === null ? 'vs' : game.result }),
+        descansa
+          ? null
+          : el('span', { class: 'grow truncate', text: black ? black.name : '—' }));
       if (game.result === null && isHumanGame(t, game)) {
         row.appendChild(button('Jugar', {
           size: 'sm', variant: 'primary',
