@@ -148,6 +148,16 @@ Dos comportamientos que el contrato no menciona y conviene saber antes de escrib
   jugador hay que rehacer la tarjeta, no actualizarla.
 - Utilidades de separación disponibles: `gap-4`, `gap-6`, `gap-16`, `gap-24`. **No existe `gap-8`.**
 
+## Promoción: dos comportamientos distintos
+
+- **En partida** (`ui/gamescreen.js`) solo se pasa `onPromotion` cuando el ajuste `autoQueen`
+  está activo; si no, `board.js` abre su diálogo de cuatro piezas. **Pendiente de verificar a
+  ojo**: el diálogo en sí no se ha visto nunca abierto en una partida real.
+- **En análisis** (`ui/analysis.js`) se corona **siempre a dama sin preguntar**: si la jugada no
+  existe, reintenta añadiendo `q` al UCI. Es cómodo para explorar, pero implica que ahí **no se
+  puede estudiar una subpromoción**. Observado a mano cargando `4k3/P7/8/8/8/8/8/4K3 w - - 0 1`
+  y jugando a7a8: sale `a8=Q+` sin diálogo.
+
 ## Pruebas de interfaz (`test/domstub.js` + `test/screens.test.js`)
 
 - `domstub.js` instala un DOM de mentira al importarlo (nodos, `classList`, `dataset`, `style`
