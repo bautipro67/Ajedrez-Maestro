@@ -205,10 +205,9 @@ export function mount(root, ctx, params = {}) {
     const topPlayer = playerFor(top);
     const bottomPlayer = playerFor(myColor);
 
-    topCard = playerCard({
-      ...topPlayer,
-      subtitle: topPlayer.kind === 'bot' ? (bot?.tagline || '') : '',
-    }, { showClock });
+    /* Sin subtitulo: el eslogan del bot no cabe en un panel de 340 px y acaba
+       estrujando el nombre hasta cortarlo. Para conocerlos esta la galeria. */
+    topCard = playerCard({ ...topPlayer, subtitle: '' }, { showClock });
     bottomCard = playerCard({ ...bottomPlayer, subtitle: '' }, { showClock });
 
     clear(topSlot);

@@ -157,7 +157,10 @@ export function playerCard(player, { showClock = true } = {}) {
   const nameRow = el('div', { class: 'player-card__name' });
   if (player.country) nameRow.appendChild(el('span', { text: flagEmoji(player.country), attrs: { 'aria-hidden': 'true' } }));
   if (player.title) nameRow.appendChild(el('span', { class: 'strong', style: { color: 'var(--warn)' }, text: player.title }));
-  nameRow.appendChild(el('span', { class: 'truncate', text: player.name || '—' }));
+  /* Sin `truncate`: con el reloj a 26px el hueco del nombre queda en unos
+     160px y casi cualquier nombre con bandera y titulo se cortaba. Mejor que
+     baje a una segunda linea. */
+  nameRow.appendChild(el('span', { text: player.name || '—' }));
 
   const meta = el('div', { class: 'player-card__meta' });
   if (typeof player.rating === 'number') meta.appendChild(ratingBadge(player.rating));

@@ -453,7 +453,7 @@ a:hover { text-decoration: underline; }
 }
 .player-card__avatar { width: 40px; height: 40px; border-radius: 8px; flex: none; overflow: hidden; }
 .player-card__avatar svg { width: 100%; height: 100%; }
-.player-card__name { font-weight: 650; display: flex; align-items: center; gap: 6px; }
+.player-card__name { font-weight: 650; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .player-card__meta { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
 .player-card__captured { display: flex; align-items: center; gap: 1px; height: 16px; margin-top: 2px; }
 .player-card__captured svg { width: 15px; height: 15px; opacity: .85; }
