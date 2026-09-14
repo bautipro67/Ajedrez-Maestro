@@ -754,12 +754,15 @@ export function mount(root, ctx, params = {}) {
       body.appendChild(row);
     }
 
+    /* Sin barra de evaluacion no hay con que medir, y con cuatro jugadas la
+       media no dice nada. Son dos motivos distintos: contarlos como uno solo
+       manda a activar algo que a lo mejor ya estaba activado. */
     const acc = accuracy();
-    body.appendChild(el('p', { class: 'small muted' }, el('span', {
-      text: acc === null
-        ? 'Precisión: no disponible (activá la barra de evaluación para medirla).'
-        : `Precisión estimada: ${acc.toFixed(1)}%`,
-    })));
+    let precision;
+    if (acc !== null) precision = `Precisión estimada: ${acc.toFixed(1)}%`;
+    else if (!bar) precision = 'Precisión: no se midió, la barra de evaluación estaba desactivada.';
+    else precision = 'Precisión: la partida fue demasiado corta para estimarla.';
+    body.appendChild(el('p', { class: 'small muted' }, el('span', { text: precision })));
 
     if (record?.unlocked?.length) {
       const list = el('div', { class: 'col gap-6' });
