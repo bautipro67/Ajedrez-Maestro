@@ -59,7 +59,12 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html, body { height: 100%; }
+/* Ojo con esto: `height: 100%` en body, junto al `overflow-x: hidden` de abajo,
+   convierte al propio body en un contenedor de scroll de la altura de la
+   ventana y el contenido mas largo queda atrapado dentro, sin poder bajar.
+   Con `min-height` el body crece con su contenido y scrollea la ventana. */
+html { height: 100%; }
+body { min-height: 100%; }
 
 body {
   margin: 0;

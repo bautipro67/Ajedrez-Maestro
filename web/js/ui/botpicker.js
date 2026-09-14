@@ -82,21 +82,23 @@ export function mount(root, ctx, params = {}) {
       onClick: () => openSetup(bot),
     });
 
-    const avatar = el('div', { class: 'bot-card__avatar' }, botAvatarNode(bot, 72));
-    card.appendChild(avatar);
+    /* La tarjeta es una fila: avatar + una columna con los datos. Si se cuelgan
+       todos como hermanos, el flex los reparte en horizontal y se desbordan. */
+    card.appendChild(el('div', { class: 'bot-card__avatar' }, botAvatarNode(bot, 52)));
 
     const name = el('div', { class: 'bot-card__name' });
-    name.appendChild(el('span', { text: bot.name }));
+    name.appendChild(el('span', { class: 'truncate', text: bot.name }));
     if (bot.title) name.appendChild(el('span', { class: 'tiny upper faint', text: bot.title }));
-    card.appendChild(name);
 
-    card.appendChild(el('div', { class: 'bot-card__elo' },
-      el('span', { text: flagEmoji(bot.country) }),
-      el('span', { class: 'mono', text: String(bot.elo) }),
-      el('span', { style: { color: tier.color }, text: tier.icon })));
-
-    card.appendChild(el('div', { class: 'bot-card__tag truncate', text: bot.tagline }));
-    card.appendChild(el('div', { class: 'chip', text: STYLE_LABELS[bot.style] || bot.style }));
+    const info = el('div', { class: 'col grow', style: { minWidth: '0', gap: '2px' } },
+      name,
+      el('div', { class: 'bot-card__elo row gap-4' },
+        el('span', { text: flagEmoji(bot.country), attrs: { 'aria-hidden': 'true' } }),
+        el('span', { class: 'mono', text: String(bot.elo) }),
+        el('span', { style: { color: tier.color }, text: tier.icon, attrs: { 'aria-hidden': 'true' } }),
+        el('span', { class: 'truncate', text: STYLE_LABELS[bot.style] || bot.style })),
+      el('div', { class: 'bot-card__tag truncate', text: bot.tagline }));
+    card.appendChild(info);
 
     if (won) {
       card.appendChild(el('div', {
@@ -134,7 +136,8 @@ export function mount(root, ctx, params = {}) {
 
     /* Filtros por tramo */
     const tiersUsed = botsByTier().map((group) => group.tier.key);
-    const tierRow = el('div', { class: 'row gap-6' });
+    /* Con 28 rivales y ocho estilos, los filtros no caben en una linea. */
+    const tierRow = el('div', { class: 'row gap-6 row--wrap' });
     tierRow.appendChild(chip('Todos', {
       active: state.tier === null,
       onClick: () => { state.tier = null; renderList(); },
@@ -149,7 +152,7 @@ export function mount(root, ctx, params = {}) {
     screen.appendChild(tierRow);
 
     /* Filtros por estilo */
-    const styleRow = el('div', { class: 'row gap-6' });
+    const styleRow = el('div', { class: 'row gap-6 row--wrap' });
     styleRow.appendChild(chip('Cualquier estilo', {
       active: state.style === null,
       onClick: () => { state.style = null; renderList(); },
