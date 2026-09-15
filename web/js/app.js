@@ -103,6 +103,7 @@ const ctx = {
   get online() {
     if (!state.online) {
       state.online = createOnline({
+        url: (state.settings && state.settings.serverUrl) || undefined,
         onEvent: (msg) => {
           for (const cb of onlineListeners) cb(msg);
         },

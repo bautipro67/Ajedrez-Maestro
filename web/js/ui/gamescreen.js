@@ -88,10 +88,9 @@ export function mount(root, ctx, params = {}) {
     if (!bot) return fatal(root, ctx, 'No encuentro ese rival.', '#/bots', 'Elegir rival');
   }
 
-  if (mode === 'online') {
-    /* El servidor todavia no existe: se dice claramente en vez de fingir. */
+  if (mode === 'online' && (!ctx.online || typeof ctx.onOnlineEvent !== 'function')) {
     return fatal(root, ctx,
-      'Las partidas online necesitan el servidor, que todavía no está en marcha. Mientras tanto podés jugar contra la máquina, en local o un torneo.',
+      'No hay conexión con el servidor de partidas. Podés jugar contra la máquina, en local o un torneo.',
       '#/bots', 'Jugar contra la máquina');
   }
 
@@ -527,6 +526,7 @@ export function mount(root, ctx, params = {}) {
   }
 
   function paintPlayers() {
+    if (!topCard || !bottomCard) return;
     const top = myColor === 'w' ? 'b' : 'w';
     const bottom = myColor;
     const material = game.material();
@@ -545,7 +545,9 @@ export function mount(root, ctx, params = {}) {
   }
 
   function paintClocks() {
-    if (!clock) return;
+    /* El reloj puede dar su primer tic antes de que existan las tarjetas
+       (al fijar los tiempos que manda el servidor, por ejemplo). */
+    if (!clock || !topCard || !bottomCard) return;
     const times = clock.getTimes();
     const running = clock.runningColor?.();
     const top = myColor === 'w' ? 'b' : 'w';
@@ -576,7 +578,9 @@ export function mount(root, ctx, params = {}) {
       return;
     }
     if (game.inCheck()) setStatus(`Jaque a las ${COLOR_NAME[turn]}.`);
-    else setStatus(`Juegan las ${COLOR_NAME[turn]}${player?.kind === 'human' && mode !== 'local' ? ' — te toca' : ''}.`);
+    /* «te toca» solo si de verdad te toca: en online los dos jugadores son
+       humanos y ambas pantallas decian lo mismo a la vez. */
+    else setStatus(`Juegan las ${COLOR_NAME[turn]}${mode !== 'local' && turn === myColor ? ' — te toca' : ''}.`);
   }
 
   function paintOpening() {
@@ -929,7 +933,160 @@ export function mount(root, ctx, params = {}) {
 
   /* ------------------------------- arranque ------------------------------ */
 
-  buildGame(myColor);
+  /* ------------------------------- online -------------------------------- */
+
+  /**
+   * En online manda el servidor: la pantalla no inventa nada. Al montarse pide
+   * el estado con un `join` (el servidor reenvia `gameStart` a quien ya esta en
+   * la partida), reconstruye el tablero con lo que llegue y a partir de ahi
+   * solo aplica lo que el servidor confirma.
+   */
+  function startOnline() {
+    setStatus('Conectando con la partida…');
+    const off = ctx.onOnlineEvent((msg) => {
+      if (destroyed || !msg || msg.gameId && msg.gameId !== params.gameId) {
+        if (!msg || msg.t !== 'gameStart') return;
+      }
+      try {
+        handleOnlineEvent(msg);
+      } catch (err) {
+        ctx.toast?.('Error procesando un mensaje del servidor: ' + (err?.message || err), 'err');
+      }
+    });
+    cleanups.push(off);
+    try {
+      ctx.online.join(params.gameId);
+    } catch {
+      setStatus('No pude pedirle la partida al servidor.');
+    }
+  }
+
+  function handleOnlineEvent(msg) {
+    if (msg.t === 'gameStart' && msg.game && msg.game.id === params.gameId) {
+      buildOnlineGame(msg.game);
+      return;
+    }
+    if (!game) return;
+    if (msg.t === 'move' && msg.gameId === params.gameId) {
+      applyServerMove(msg);
+      return;
+    }
+    if (msg.t === 'gameOver' && msg.gameId === params.gameId) {
+      game.forceResult(msg.result, msg.reason || 'agreement');
+      finish();
+      return;
+    }
+    if (msg.t === 'chat' && msg.gameId === params.gameId) {
+      say(`${msg.from}: ${msg.text}`);
+      return;
+    }
+    if (msg.t === 'opponentGone' && msg.gameId === params.gameId) {
+      setStatus(`Tu rival se desconectó. Si no vuelve en ${msg.secondsLeft} s, ganás.`);
+      return;
+    }
+    if (msg.t === 'opponentBack' && msg.gameId === params.gameId) {
+      setStatus('Tu rival volvió.');
+      sync({ animate: false });
+    }
+  }
+
+  /** Reconstruye la partida a partir del estado que manda el servidor. */
+  function buildOnlineGame(payload) {
+    myColor = payload.youAre === 'b' ? 'b' : 'w';
+    const base = payload.tc?.base || 0;
+    const inc = payload.tc?.inc || 0;
+    tc = { id: `${base}+${inc}`, label: `${base}+${inc}`, base, inc };
+
+    const lado = (info, color) => ({
+      kind: 'human',
+      name: info?.name || (color === 'w' ? 'Blancas' : 'Negras'),
+      rating: typeof info?.rating === 'number' ? Math.round(info.rating) : undefined,
+      avatarSeed: info?.name || color,
+    });
+
+    game = createGame({
+      mode: 'online',
+      timeControl: base > 0 ? { base, inc } : null,
+      rated: !!payload.rated,
+      white: lado(payload.white, 'w'),
+      black: lado(payload.black, 'b'),
+    });
+    /* Las jugadas ya hechas se reproducen tal cual para llegar a la posicion
+       actual: asi una reconexion recupera la partida entera, no solo la FEN. */
+    for (const uci of payload.moves || []) {
+      const hecho = game.playUci(uci);
+      if (!hecho || hecho.ok === false) break;
+    }
+
+    evals = [];
+    ended = false;
+    viewIndex = -2;
+    hintsLeft = 0;
+
+    if (clock) clock.destroy();
+    clock = base > 0
+      ? createClock({ base, inc, onTick: () => paintClocks(), onFlag: () => { /* lo decide el servidor */ } })
+      : null;
+    if (clock && payload.clocks) clock.setTimes(payload.clocks);
+
+    if (board) board.destroy();
+    clear(boardHost);
+    board = createBoard(boardHost, {
+      orientation: myColor === 'b' ? 'black' : 'white',
+      pieceSet: settings.pieceSet || 'clasico',
+      theme: settings.boardTheme || 'verde',
+      coordinates: settings.showCoordinates !== false,
+      showLegal: settings.showLegalMoves !== false,
+      animationMs: settings.animations === false ? 0 : 180,
+      onMoveAttempt: handleOnlineMoveAttempt,
+      onPromotion: settings.autoQueen ? () => Promise.resolve('q') : null,
+      onPremove: settings.premove === false ? null : handlePremove,
+    });
+
+    buildPlayerCards();
+    renderControls();
+    sync({ animate: false });
+    ctx.sound?.play?.('gameStart');
+  }
+
+  /** Una jugada propia: se comprueba aqui y se manda; el servidor es la autoridad. */
+  async function handleOnlineMoveAttempt(from, to, promotion) {
+    if (!game || game.status.over || game.turn() !== myColor || !isLive()) return false;
+    const res = game.tryMove(from, to, promotion || null);
+    if (!res.ok) return false;
+    const uci = res.entry.uci;
+    try {
+      ctx.online.move(params.gameId, uci);
+    } catch {
+      ctx.toast?.('No pude enviar la jugada.', 'err');
+    }
+    afterMove(res.entry, 'human');
+    return true;
+  }
+
+  /** Jugada confirmada por el servidor: si ya la teniamos, solo ajusta relojes. */
+  function applyServerMove(msg) {
+    const yaHechas = game.uciMoves();
+    const esperada = typeof msg.moveNumber === 'number' ? null : null;
+    const ultima = yaHechas[yaHechas.length - 1];
+    if (ultima !== msg.uci || yaHechas.length === 0) {
+      const hecho = game.playUci(msg.uci);
+      if (hecho && hecho.ok !== false) {
+        if (clock && msg.clocks) clock.setTimes(msg.clocks);
+        clearPremove();
+        ctx.sound?.playMoveSound?.({ capture: /x/.test(msg.san || ''), check: /[+#]$/.test(msg.san || '') });
+        viewIndex = -2;
+        sync({ animate: true });
+        runPremove();
+        return;
+      }
+    }
+    if (clock && msg.clocks) clock.setTimes(msg.clocks);
+    sync({ animate: false });
+  }
+
+  if (mode === 'online') startOnline();
+  else buildGame(myColor);
 
   return {
     unmount() {

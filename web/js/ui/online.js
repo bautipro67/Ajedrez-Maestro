@@ -147,7 +147,34 @@ export function mount(root, ctx, params = {}) {
   const retryLine = el('p', { class: 'tiny faint', text: '' });
 
   const retryButton = button('Reintentar ahora', { variant: 'primary', onClick: () => retry(true) });
-  const retryRow = el('div', { class: 'row row--wrap gap-6 hidden' }, retryButton);
+
+  /* Servido desde itch.io o GitHub Pages, el cliente intentaria conectarse a
+     ESA direccion, donde no hay ningun servidor de partidas. Por eso se puede
+     escribir aqui donde vive el tuyo. */
+  const serverInput = el('input', {
+    class: 'input',
+    type: 'url',
+    value: (ctx.settings && ctx.settings.serverUrl) || '',
+    placeholder: 'https://tu-servidor.onrender.com',
+    attrs: { 'aria-label': 'Dirección del servidor de partidas', spellcheck: 'false' },
+  });
+  const serverSave = button('Usar este servidor', {
+    onClick: () => {
+      const valor = serverInput.value.trim();
+      if (ctx.settings) ctx.settings.serverUrl = valor;
+      ctx.saveSettings({ serverUrl: valor });
+      ctx.toast(valor ? 'Guardado. Reconectando…' : 'Se usará el mismo sitio de la página.', '');
+      setTimeout(() => location.reload(), 600);
+    },
+  });
+  const serverRow = el('div', { class: 'col gap-6', style: { maxWidth: '52ch' } },
+    el('span', { class: 'field__label', text: 'Servidor de partidas' }),
+    el('span', { class: 'tiny faint', text: 'Dejalo vacío si abrís el juego desde el propio servidor. Si lo abrís en itch.io o GitHub Pages, pegá aquí la dirección donde lo tengas publicado.' }),
+    el('div', { class: 'row row--wrap gap-6' }, serverInput, serverSave));
+
+  const retryRow = el('div', { class: 'col gap-16 hidden' },
+    el('div', { class: 'row row--wrap gap-6' }, retryButton),
+    serverRow);
 
   const offlineGrid = el('div', { class: 'mode-grid' });
   for (const mode of OFFLINE_MODES) {

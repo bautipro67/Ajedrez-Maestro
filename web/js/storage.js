@@ -118,6 +118,11 @@ export function defaultSettings() {
     highlightLastMove: true,
     showBotChat: true,
     premove: true,
+    /* Direccion del servidor de partidas. Vacio = el mismo sitio desde el que
+       se sirve la pagina, que es lo correcto con `npm start`. Hace falta
+       rellenarlo cuando la pagina vive en itch.io o GitHub Pages y el
+       servidor esta en otro sitio. */
+    serverUrl: '',
   };
 }
 
