@@ -393,6 +393,10 @@ async function scenario2() {
     out.reconnectSameId = back.you.id === idaSide.id;
     out.backAgain = await survivor.waitFor('opponentBack', 8000)
       .catch((err) => ({ t: 'fallo', message: err.message }));
+    /* La partida que reenvia al reconectar tiene que venir marcada: si no, el
+       lobby mete al jugador dentro cada vez que el socket parpadea. */
+    out.resumed = await again.waitFor('gameStart', 6000)
+      .catch((err) => ({ t: 'fallo', message: err.message }));
     again.close();
     survivor.close();
     await wait(200);
@@ -516,6 +520,15 @@ test('si alguien se cae, el rival se entera y se puede volver', () => {
   assert(s2.reconnectSameId, 'y te devuelve tu misma identidad, no una nueva');
   assert(s2.backAgain && s2.backAgain.t === 'opponentBack',
     'no llego opponentBack: ' + (s2.backAgain?.message || '—'));
+});
+
+test('la partida que reenvia al reconectar viene marcada como reanudada', () => {
+  assert(s2.resumed && s2.resumed.t === 'gameStart',
+    'no reenvio la partida al reconectar: ' + (s2.resumed?.message || '—'));
+  assertEqual(s2.resumed.resume, true,
+    'sin la marca, el lobby no distingue «esta ya la estabas jugando» de «acaba de ' +
+    'empezar una» y te arrastra a la vieja en cada reconexion');
+  assertEqual(s2.resumed.game.status, 'playing', 'y la partida sigue en marcha');
 });
 
 test('la revancha necesita que la pidan los dos y cambia los colores', () => {

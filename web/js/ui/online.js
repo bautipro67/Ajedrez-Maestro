@@ -97,6 +97,7 @@ export function mount(root, ctx, params = {}) {
     newRated: true,
     newPrivate: false,
     code: String(params.code || ''),
+    resumeId: null,            // partida tuya que sigue viva, si el servidor avisa
   };
 
   let alive = true;
@@ -199,6 +200,37 @@ export function mount(root, ctx, params = {}) {
     retryRow,
     offlineExtras);
   screen.appendChild(banner);
+
+  /* ------------------ la partida que ya tenias en marcha ---------------- */
+
+  const resumeText = el('p', { class: 'muted', text: '' });
+  const resumeButton = button('Volver a la partida', {
+    variant: 'primary',
+    onClick: () => { if (state.resumeId) ctx.navigate(`#/jugar/online/${state.resumeId}`); },
+  });
+  const resumeCard = el('section', {
+    class: 'card row row--wrap gap-16 hidden',
+    style: { marginBottom: '18px', alignItems: 'center' },
+  },
+  el('div', { class: 'col gap-4 grow' },
+    el('h2', { class: 'h2', text: 'Tenés una partida en curso' }),
+    resumeText),
+  resumeButton);
+  screen.appendChild(resumeCard);
+
+  /**
+   * Al reconectar, el servidor reenvia las partidas que seguis jugando. Eso no
+   * es una partida nueva, asi que aqui solo se avisa: entrar solo, a la fuerza
+   * y cada vez que el socket parpadea, era insoportable.
+   */
+  function showResume(game) {
+    const mia = game && game.status === 'playing' && game.youAre;
+    state.resumeId = mia ? game.id : null;
+    if (!mia) { resumeCard.classList.add('hidden'); return; }
+    const rival = game.youAre === 'w' ? game.black : game.white;
+    resumeText.textContent = `Contra ${rival?.name || 'tu rival'}. El reloj corre igual mientras no estés, así que conviene volver.`;
+    resumeCard.classList.remove('hidden');
+  }
 
   const lobbyNote = el('p', {
     class: 'small faint hidden',
@@ -739,7 +771,8 @@ export function mount(root, ctx, params = {}) {
         refreshControls();
         break;
       case 'gameStart':
-        enterGame(msg);
+        if (msg.resume) showResume(msg.game);
+        else enterGame(msg);
         break;
       case 'error':
         stopSearch(false);

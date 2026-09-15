@@ -989,7 +989,11 @@ function handleHello(client, msg) {
   });
   scheduleSave();
 
-  /* Reconnection: cancel the countdown, tell the rival and resend the game. */
+  /* Reconnection: cancel the countdown, tell the rival and resend the game.
+     These resends carry `resume: true` so the client can tell "here is the
+     game you were already in" from "a new game just started for you": the
+     lobby must not drag the player into an old game every time the socket
+     blinks, it just offers the way back. */
   for (const game of games.values()) {
     const color = playerColor(game, user.id);
     if (!color) continue;
@@ -998,9 +1002,9 @@ function handleHello(client, msg) {
         stopAbandonTimer(game, color);
         sendToUser(opponentId(game, user.id), { t: 'opponentBack', gameId: game.id });
       }
-      client.send({ t: 'gameStart', game: gamePayload(game, user.id) });
+      client.send({ t: 'gameStart', resume: true, game: gamePayload(game, user.id) });
     } else if (game.status === 'over' && nowMs() - game.endedAt < FINISHED_TTL_MS) {
-      client.send({ t: 'gameStart', game: gamePayload(game, user.id) });
+      client.send({ t: 'gameStart', resume: true, game: gamePayload(game, user.id) });
       client.send({
         t: 'gameOver',
         gameId: game.id,
