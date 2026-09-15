@@ -253,7 +253,7 @@ async function render() {
     root.appendChild(loadError(error));
   }
   root.focus({ preventScroll: true });
-  window.scrollTo({ top: 0 });
+  root.scrollTop = 0;   // el scroll vive en .main, no en la ventana
 }
 
 function notFound() {

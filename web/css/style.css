@@ -59,12 +59,11 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-/* Ojo con esto: `height: 100%` en body, junto al `overflow-x: hidden` de abajo,
-   convierte al propio body en un contenedor de scroll de la altura de la
-   ventana y el contenido mas largo queda atrapado dentro, sin poder bajar.
-   Con `min-height` el body crece con su contenido y scrollea la ventana. */
-html { height: 100%; }
-body { min-height: 100%; }
+/* itch.io sirve el juego dentro de un <iframe scrolling="no">, y ese atributo
+   apaga el scroll de la ventana: la rueda y el dedo no hacen nada por mucho
+   que sobre contenido. Por eso aqui no scrollea la ventana sino un contenedor
+   nuestro (.main), que si obedece dentro de ese iframe y en cualquier sitio. */
+html, body { height: 100%; }
 
 body {
   margin: 0;
@@ -74,7 +73,7 @@ body {
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 img, svg { display: block; max-width: 100%; }
@@ -242,7 +241,7 @@ a:hover { text-decoration: underline; }
 
 /* ------------------------------- layout -------------------------------- */
 
-.app { min-height: 100%; display: flex; flex-direction: column; }
+.app { height: 100%; display: flex; flex-direction: column; }
 
 .topbar {
   height: var(--topbar-h);
@@ -273,7 +272,15 @@ a:hover { text-decoration: underline; }
 
 /* El hueco de abajo no es decorativo: garantiza que siempre haya algo que
    scrollear y que nada quede pegado al borde inferior. */
-.main { flex: 1 1 auto; padding: 22px 18px 72px; }
+.main {
+  flex: 1 1 auto;
+  min-height: 0;          /* sin esto un hijo alto estira el flex y no queda scroll */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 22px 18px 72px;
+}
 .screen { max-width: 1180px; margin: 0 auto; }
 .screen--wide { max-width: 1480px; }
 .screen__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
