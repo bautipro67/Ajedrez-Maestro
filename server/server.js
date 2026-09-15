@@ -517,7 +517,11 @@ function lobbyPayload(viewerId = null) {
     }
   }
   list.sort((a, b) => (b.created || 0) - (a.created || 0));
-  return { t: 'lobby', games: list };
+  /* Cuanta gente hay de verdad. Sin esto, buscar rival en una sala vacia es
+     esperar sin saber a que, que es lo peor que puede hacer un boton. */
+  let conectados = 0;
+  for (const user of users.values()) if (user.sockets.size > 0) conectados++;
+  return { t: 'lobby', games: list, players: conectados, searching: quickQueue.length };
 }
 
 function broadcastLobby() {
@@ -1016,6 +1020,8 @@ function handleHello(client, msg) {
     }
   }
   client.send(lobbyPayload(user.id));
+  /* Que los demas vean el recuento subir en cuanto entra alguien. */
+  scheduleLobby();
 }
 
 function handleLobby(client, user) {
@@ -1102,10 +1108,12 @@ function handleQuick(client, user, msg) {
     since: nowMs(),
   });
   runQuickMatcher();
+  scheduleLobby();
 }
 
 function handleCancelQuick(client, user) {
   removeFromQueue(user.id);
+  scheduleLobby();
 }
 
 function handleMove(client, user, msg) {

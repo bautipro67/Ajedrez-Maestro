@@ -89,6 +89,8 @@ export function mount(root, ctx, params = {}) {
     games: [],
     live: [],
     top: [],
+    players: 0,                // personas conectadas, segun el servidor
+    queue: 0,                  // cuantas estan buscando rival
     searching: false,
     searchStartedAt: 0,
     quickTc: '3+0',
@@ -281,7 +283,15 @@ export function mount(root, ctx, params = {}) {
   const quickButton = button('Buscar rival', { variant: 'primary', size: 'lg', onClick: startQuick });
   const cancelButton = button('Cancelar la búsqueda', { variant: 'ghost', onClick: () => stopSearch(true) });
   const searchingText = el('p', { class: 'muted', text: 'Buscando rival de tu nivel…' });
-  const searchingBox = el('div', { class: 'searching hidden' }, spinner(26), searchingText, cancelButton);
+  /* Esperar a que aparezca alguien que no existe es la peor pantalla posible:
+     si no hay nadie mas buscando se dice, y se ofrece algo que si se puede
+     hacer ahora mismo. */
+  const soloNota = el('p', { class: 'small muted', text: '' });
+  const soloSalida = el('div', { class: 'row row--wrap gap-6' },
+    button('Jugar contra un bot de tu nivel', { onClick: () => ctx.navigate('#/bots') }));
+  const soloBox = el('div', { class: 'col gap-6 hidden' }, soloNota, soloSalida);
+  const searchingBox = el('div', { class: 'searching hidden' }, spinner(26), searchingText, soloBox, cancelButton);
+  const quickNote = el('p', { class: 'small faint', text: '' });
 
   const quickCard = gated(el('section', { class: 'card' },
     el('h2', { class: 'card__title', text: 'Emparejamiento rápido' }),
@@ -292,6 +302,7 @@ export function mount(root, ctx, params = {}) {
       onChange: (event) => { state.quickRated = !!event.target.checked; },
     }),
     el('div', { class: 'row row--wrap gap-6' }, quickButton),
+    quickNote,
     searchingBox));
   leftCol.appendChild(quickCard);
 
@@ -554,6 +565,27 @@ export function mount(root, ctx, params = {}) {
     else retryLine.textContent = 'Lo seguimos intentando en segundo plano un rato más.';
   }
 
+  /**
+   * Cuanta compañia hay. El recuento se cuenta a si mismo, asi que «1» quiere
+   * decir que estas solo: mejor decirlo que dejar a alguien esperando rival en
+   * una sala vacia.
+   */
+  function renderCompany() {
+    if (state.conn !== 'online') { quickNote.textContent = ''; soloBox.classList.add('hidden'); return; }
+    const otros = Math.max(0, state.players - 1);
+    quickNote.textContent = otros === 0
+      ? 'Ahora mismo no hay nadie más conectado.'
+      : otros === 1 ? 'Hay 1 persona más conectada.' : `Hay ${otros} personas más conectadas.`;
+
+    const enCola = Math.max(0, state.queue - (state.searching ? 1 : 0));
+    const solo = state.searching && otros === 0 && enCola === 0;
+    soloBox.classList.toggle('hidden', !solo);
+    if (solo) {
+      soloNota.textContent = 'No hay nadie más buscando rival. Podés dejar la búsqueda puesta '
+        + 'por si alguien entra, o jugar mientras tanto contra un bot de tu nivel.';
+    }
+  }
+
   function renderConn() {
     const labels = {
       online: ['is-on', 'Conectado'],
@@ -587,6 +619,7 @@ export function mount(root, ctx, params = {}) {
   function renderAll() {
     renderConn();
     renderBanner();
+    renderCompany();
     renderGames();
     renderLive();
     renderTop();
@@ -647,6 +680,7 @@ export function mount(root, ctx, params = {}) {
     ctx.sound?.play?.('click');
     startSearchTimer();
     refreshControls();
+    renderCompany();
   }
 
   function stopSearch(notify) {
@@ -733,6 +767,8 @@ export function mount(root, ctx, params = {}) {
       if (!alive || !state.searching) return;
       const secs = Math.round((Date.now() - state.searchStartedAt) / 1000);
       searchingText.textContent = `Buscando rival de tu nivel… ${secs} s`;
+      /* A los 20 s ya no es un parpadeo: si sigue sin haber nadie, se dice. */
+      if (secs === 20) renderCompany();
     }, 1000);
   }
 
@@ -774,6 +810,9 @@ export function mount(root, ctx, params = {}) {
         requestData();
         break;
       case 'lobby': {
+        if (Number.isFinite(msg.players)) state.players = msg.players;
+        if (Number.isFinite(msg.searching)) state.queue = msg.searching;
+        renderCompany();
         state.live = liveFrom(msg);
         const all = Array.isArray(msg.games) ? msg.games : [];
         state.games = all.filter((game) => !state.live.includes(game));

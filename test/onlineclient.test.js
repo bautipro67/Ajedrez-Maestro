@@ -57,6 +57,52 @@ test('lo que no se entiende se rechaza en vez de inventarlo', () => {
   }
 });
 
+/* ------------------- de donde saca la direccion sola -------------------- */
+
+/** Monta un location de mentira y devuelve a donde se conectaria el cliente. */
+function endpointDesde(location) {
+  const previo = Object.getOwnPropertyDescriptor(globalThis, 'location');
+  Object.defineProperty(globalThis, 'location', { value: location, configurable: true, writable: true });
+  try {
+    return createOnline({}).endpoint;
+  } finally {
+    if (previo) Object.defineProperty(globalThis, 'location', previo);
+    else delete globalThis.location;
+  }
+}
+
+test('servido desde itch.io o GitHub Pages, busca el servidor publicado', () => {
+  /* Esas dos sirven la pagina pero no tienen sala de partidas: preguntarle al
+     sitio de la pagina es preguntar en el vacio, y era exactamente lo que
+     dejaba el online muerto sin tocar ningun ajuste. */
+  const publicado = 'wss://ajedrez-maestro.onrender.com/ws';
+  assertEqual(endpointDesde({ hostname: 'bautipro67.github.io', host: 'bautipro67.github.io', protocol: 'https:' }),
+    publicado, 'desde GitHub Pages');
+  assertEqual(endpointDesde({ hostname: 'html-classic.itch.zone', host: 'html-classic.itch.zone', protocol: 'https:' }),
+    publicado, 'desde el marco de itch.io');
+});
+
+test('servido por el propio servidor, se conecta a sí mismo', () => {
+  assertEqual(endpointDesde({ hostname: 'ajedrez-maestro.onrender.com', host: 'ajedrez-maestro.onrender.com', protocol: 'https:' }),
+    'wss://ajedrez-maestro.onrender.com/ws', 'desde el servidor publicado');
+  assertEqual(endpointDesde({ hostname: 'localhost', host: 'localhost:8099', protocol: 'http:' }),
+    'ws://localhost:8099/ws', 'y en local, al puerto que sea');
+});
+
+test('lo que escriba el usuario manda sobre todo lo demás', () => {
+  const previo = Object.getOwnPropertyDescriptor(globalThis, 'location');
+  Object.defineProperty(globalThis, 'location', {
+    value: { hostname: 'bautipro67.github.io', host: 'bautipro67.github.io', protocol: 'https:' },
+    configurable: true, writable: true,
+  });
+  try {
+    assertEqual(createOnline({ url: 'https://otro-servidor.com' }).endpoint, 'wss://otro-servidor.com/ws');
+  } finally {
+    if (previo) Object.defineProperty(globalThis, 'location', previo);
+    else delete globalThis.location;
+  }
+});
+
 /* ------------------------- hasta cuando insiste ------------------------- */
 
 const hayWebSocket = typeof WebSocket !== 'undefined';

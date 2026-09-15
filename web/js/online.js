@@ -226,8 +226,20 @@ export function toEndpoint(raw) {
   return u.toString();
 }
 
+/* itch.io y GitHub Pages sirven la pagina pero no tienen sala de partidas, asi
+   que preguntarle al sitio de la pagina es preguntar en el vacio. Cuando el
+   juego no lo sirve su propio servidor se va al publicado, y asi el online
+   funciona sin que nadie tenga que configurar nada. Si publicas el servidor en
+   otro sitio, esta es la unica linea que hay que cambiar; y el campo de
+   ajustes manda sobre esto de todos modos. */
+const SERVIDOR_PUBLICADO = 'wss://ajedrez-maestro.onrender.com/ws';
+
 function defaultEndpoint() {
   if (typeof location === 'undefined') return 'ws://localhost:8080/ws';
+  const host = (location.hostname || '').toLowerCase();
+  const enCasa = host === 'localhost' || host === '127.0.0.1' || host === '::1'
+    || host === new URL(SERVIDOR_PUBLICADO).hostname;
+  if (!enCasa) return SERVIDOR_PUBLICADO;
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${location.host}/ws`;
 }

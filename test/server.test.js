@@ -240,6 +240,14 @@ test('el lobby anuncia la partida abierta con el Elo del anfitrion', () => {
   assert(typeof game.hostRating === 'number', 'y la puntuacion del anfitrion');
 });
 
+test('el lobby dice cuánta gente hay conectada', () => {
+  /* Sin este recuento, «Buscar rival» en una sala vacia es esperar sin saber a
+     que, y no hay forma de que la pantalla avise. */
+  assert(Number.isFinite(s.lobby.players), 'el lobby trae el recuento de conectados');
+  assert(s.lobby.players >= 2, 'con dos clientes abiertos tienen que contarse los dos, y dice ' + s.lobby.players);
+  assert(Number.isFinite(s.lobby.searching), 'y cuántos están buscando rival');
+});
+
 test('unirse arranca la partida para los dos', () => {
   for (const [label, start] of [['anfitrion', s.startA], ['invitado', s.startB]]) {
     assert(start && start.game, 'el ' + label + ' recibio gameStart');
