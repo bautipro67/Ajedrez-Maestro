@@ -380,12 +380,18 @@ export function installDom() {
   globalThis.requestAnimationFrame = (fn) => setTimeout(() => fn(Date.now()), 0);
   globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
   globalThis.Worker = undefined;
-  globalThis.CustomEvent = class CustomEvent {
-    constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
-    preventDefault() {}
-    stopPropagation() {}
-  };
-  globalThis.Event = globalThis.CustomEvent;
+  /* Node ya trae Event y CustomEvent de verdad, y undici los comprueba con
+     instanceof: pisarlos rompia cualquier WebSocket abierto despues en el
+     mismo proceso, y tumbaba la suite entera cuando otra corria detras. Se
+     rellenan solo si faltan. */
+  if (typeof globalThis.CustomEvent !== 'function') {
+    globalThis.CustomEvent = class CustomEvent {
+      constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
+      preventDefault() {}
+      stopPropagation() {}
+    };
+  }
+  if (typeof globalThis.Event !== 'function') globalThis.Event = globalThis.CustomEvent;
   return { document: documentStub, window: windowStub };
 }
 

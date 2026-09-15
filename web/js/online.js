@@ -1,14 +1,21 @@
 /**
  * online.js — WebSocket client for the multiplayer server. It reconnects on its
- * own with exponential backoff, queues outgoing messages while the link is
- * down, and measures latency. Protocol: docs/CONTRATO.md section 10.
+ * own with exponential backoff — a bounded number of times, then it gives up
+ * and says so rather than nagging forever — queues outgoing messages while the
+ * link is down, and measures latency. Protocol: docs/CONTRATO.md section 10.
  */
 
 const MAX_QUEUE = 40;
 const BACKOFF_STEPS = [1000, 2000, 4000, 8000, 15000];
+/* Reintentar para siempre da la lata sin arreglar nada: si no hay servidor, no
+   lo va a haber por insistir. Ocho intentos son unos 75 s, de sobra para
+   despertar a uno dormido, y despues se para y queda el boton de reintentar. */
+const MAX_ATTEMPTS = 8;
 
-export function createOnline({ url, onEvent } = {}) {
-  const endpoint = url || defaultEndpoint();
+export function createOnline({ url, onEvent, backoff, maxAttempts } = {}) {
+  const endpoint = toEndpoint(url) || defaultEndpoint();
+  const steps = Array.isArray(backoff) && backoff.length ? backoff : BACKOFF_STEPS;
+  const topeIntentos = Number.isFinite(maxAttempts) ? maxAttempts : MAX_ATTEMPTS;
 
   let socket = null;
   let state = 'idle';          // idle | connecting | open | closed
@@ -66,7 +73,11 @@ export function createOnline({ url, onEvent } = {}) {
 
   function scheduleReconnect() {
     if (manualClose || reconnectTimer) return;
-    const delay = BACKOFF_STEPS[Math.min(attempt, BACKOFF_STEPS.length - 1)];
+    if (attempt >= topeIntentos) {
+      setState('closed', { retryInMs: null, gaveUp: true });
+      return;
+    }
+    const delay = steps[Math.min(attempt, steps.length - 1)];
     attempt += 1;
     setState('closed', { retryInMs: delay });
     reconnectTimer = setTimeout(() => {
@@ -177,6 +188,42 @@ export function createOnline({ url, onEvent } = {}) {
 
     raw: send,
   };
+}
+
+/**
+ * Lo que la gente pega en «Servidor de partidas» es la direccion de su sitio
+ * —https://lo-que-sea.onrender.com—, no la del socket, y tal cual no sirve: el
+ * servidor solo atiende el upgrade en /ws, asi que sin ruta devuelve 404 y el
+ * cliente se pasa la vida reintentando contra una puerta que no existe. Aqui
+ * se traduce: http(s) pasa a ws(s), sin esquema se asume wss (ws en local) y
+ * si no viene ruta se añade /ws. Devuelve null si no hay nada aprovechable.
+ */
+export function toEndpoint(raw) {
+  const texto = String(raw == null ? '' : raw).trim();
+  if (!texto) return null;
+
+  let candidato = texto;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(candidato)) {
+    const local = /^(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(candidato);
+    candidato = (local ? 'ws://' : 'wss://') + candidato;
+  }
+
+  let u;
+  try { u = new URL(candidato); } catch { return null; }
+  if (u.protocol === 'http:') u.protocol = 'ws:';
+  else if (u.protocol === 'https:') u.protocol = 'wss:';
+  if (u.protocol !== 'ws:' && u.protocol !== 'wss:') return null;
+  /* Cada navegador parsea distinto: Node revienta con "no vale" y Chrome lo
+     acepta como el host "no%20vale". Se exige un nombre de maquina de verdad
+     para que la validacion diga lo mismo en todas partes. */
+  const host = u.hostname;
+  const nombreValido = /^\[[0-9a-f:.]+\]$/i.test(host)
+    || /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test(host);
+  if (!nombreValido) return null;
+  if (!u.pathname || u.pathname === '/') u.pathname = '/ws';
+  u.search = '';
+  u.hash = '';
+  return u.toString();
 }
 
 function defaultEndpoint() {

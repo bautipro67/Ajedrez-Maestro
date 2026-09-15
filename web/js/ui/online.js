@@ -1,16 +1,16 @@
 /**
  * ui/online.js — the online lobby: connection status, quick pairing, open
  * games, game creation, private codes, leaderboard and live games to watch.
- * The match server may well be down (it is, today), so the offline branch gets
- * the most care: it says so in plain words, keeps retrying on its own, and
- * points at everything that does work without a connection.
+ * The match server may well be down, so the offline branch gets the most care:
+ * it says so in plain words, retries a few times quietly without the screen
+ * flickering between states, and points at everything that works offline.
  */
 
 import {
   el, clear, button, chip, field, select, switchControl,
   avatarNode, ratingBadge, emptyState, spinner,
 } from './components.js';
-import { ONLINE_ERRORS } from '../online.js';
+import { ONLINE_ERRORS, toEndpoint } from '../online.js';
 import { TIME_CONTROLS, CATEGORY_NAMES, timeCategory } from '../clock.js';
 
 /* Online play always has a clock: 'sin-reloj' is deliberately left out. */
@@ -83,7 +83,8 @@ export function mount(root, ctx, params = {}) {
   const state = {
     conn: 'connecting',        // 'connecting' | 'online' | 'offline'
     latency: null,
-    retryAt: null,             // timestamp of the client's next automatic attempt
+    everFailed: false,         // ya fallo una vez: los reintentos van en silencio
+    gaveUp: false,             // el cliente dejo de reintentar solo
     me: null,                  // what the server says about us, from 'welcome'
     games: [],
     live: [],
@@ -102,7 +103,6 @@ export function mount(root, ctx, params = {}) {
 
   let alive = true;
   let connectTimer = null;
-  let countdownTimer = null;
   let searchTimer = null;
   let refreshTimer = null;
   let unsubscribe = () => {};
@@ -148,6 +148,7 @@ export function mount(root, ctx, params = {}) {
   const retryLine = el('p', { class: 'tiny faint', text: '' });
 
   const retryButton = button('Reintentar ahora', { variant: 'primary', onClick: () => retry(true) });
+  const retryLabel = retryButton.querySelector('span');
 
   /* Servido desde itch.io o GitHub Pages, el cliente intentaria conectarse a
      ESA direccion, donde no hay ningun servidor de partidas. Por eso se puede
@@ -159,19 +160,39 @@ export function mount(root, ctx, params = {}) {
     placeholder: 'https://tu-servidor.onrender.com',
     attrs: { 'aria-label': 'Dirección del servidor de partidas', spellcheck: 'false' },
   });
+  const serverHint = el('span', { class: 'tiny faint', text: '' });
   const serverSave = button('Usar este servidor', {
     onClick: () => {
       const valor = serverInput.value.trim();
+      /* Si no se entiende, mejor decirlo aqui que dejar al cliente golpeando
+         una direccion imposible durante un minuto. */
+      if (valor && !toEndpoint(valor)) {
+        ctx.toast('No entiendo esa dirección. Tiene que ser algo como https://tu-servidor.onrender.com', 'err');
+        serverInput.focus();
+        return;
+      }
       if (ctx.settings) ctx.settings.serverUrl = valor;
       ctx.saveSettings({ serverUrl: valor });
       ctx.toast(valor ? 'Guardado. Reconectando…' : 'Se usará el mismo sitio de la página.', '');
       setTimeout(() => location.reload(), 600);
     },
   });
+
+  /** Enseña a donde se va a conectar de verdad, para que no haya sorpresas. */
+  function renderServerHint() {
+    const valor = serverInput.value.trim();
+    if (!valor) { serverHint.textContent = ''; return; }
+    const destino = toEndpoint(valor);
+    serverHint.textContent = destino
+      ? `Se conectará a ${destino}`
+      : 'No entiendo esa dirección.';
+  }
+  serverInput.addEventListener('input', renderServerHint);
   const serverRow = el('div', { class: 'col gap-6', style: { maxWidth: '52ch' } },
     el('span', { class: 'field__label', text: 'Servidor de partidas' }),
-    el('span', { class: 'tiny faint', text: 'Dejalo vacío si abrís el juego desde el propio servidor. Si lo abrís en itch.io o GitHub Pages, pegá aquí la dirección donde lo tengas publicado.' }),
-    el('div', { class: 'row row--wrap gap-6' }, serverInput, serverSave));
+    el('span', { class: 'tiny faint', text: 'Dejalo vacío si abrís el juego desde el propio servidor. Si lo abrís en itch.io o GitHub Pages, pegá aquí la dirección donde lo tengas publicado; la de la página sirve tal cual, no hace falta añadirle nada.' }),
+    el('div', { class: 'row row--wrap gap-6' }, serverInput, serverSave),
+    serverHint);
 
   const retryRow = el('div', { class: 'col gap-16 hidden' },
     el('div', { class: 'row row--wrap gap-6' }, retryButton),
@@ -489,9 +510,21 @@ export function mount(root, ctx, params = {}) {
     identityMeta.appendChild(el('span', { class: 'tiny faint', text: CATEGORY_NAMES[category] || '' }));
   }
 
+  /**
+   * Las tres caras del aviso. Sin esto la pantalla parpadeaba en cada reintento
+   * automatico: volvia a «Buscando el servidor…» y escondia la casilla donde se
+   * escribe la direccion, justo mientras la estabas usando. Una vez que ha
+   * fallado, la cara ya no cambia: el reintento se ve en la pildora de estado.
+   */
+  function bannerFace() {
+    if (state.conn === 'online') return 'ok';
+    return state.everFailed ? 'caido' : 'buscando';
+  }
+
   function renderBanner() {
+    const cara = bannerFace();
     clear(bannerIcon);
-    if (state.conn === 'connecting') {
+    if (cara === 'buscando') {
       bannerIcon.appendChild(spinner(22));
       bannerTitle.textContent = 'Buscando el servidor de partidas…';
       bannerDesc.textContent = 'Un momento, estamos intentando entrar en la sala.';
@@ -501,34 +534,31 @@ export function mount(root, ctx, params = {}) {
       bannerDesc.textContent = 'No podemos ponerte con otras personas porque la sala de juego no está disponible. '
         + 'No es cosa de tu conexión ni de tu navegador: no hay nadie al otro lado atendiendo.';
     }
-    banner.classList.toggle('hidden', state.conn === 'online');
-    retryRow.classList.toggle('hidden', state.conn !== 'offline');
-    offlineExtras.classList.toggle('hidden', state.conn !== 'offline');
+    banner.classList.toggle('hidden', cara === 'ok');
+    retryRow.classList.toggle('hidden', cara !== 'caido');
+    offlineExtras.classList.toggle('hidden', cara !== 'caido');
     renderRetryLine();
   }
 
+  /* Un solo renglon quieto. La cuenta atras segundo a segundo no servia para
+     nada y encima obligaba a repintar la pantalla cada segundo. */
   function renderRetryLine() {
-    if (state.conn !== 'offline') {
-      retryLine.textContent = '';
-      return;
-    }
-    if (!state.retryAt) {
-      retryLine.textContent = online
-        ? 'Lo seguimos intentando solos cada pocos segundos.'
-        : 'Probá otra vez cuando el servidor esté en marcha.';
-      return;
-    }
-    const secs = Math.max(0, Math.round((state.retryAt - Date.now()) / 1000));
-    retryLine.textContent = secs > 0
-      ? `Volvemos a intentarlo solos dentro de ${secs} s.`
-      : 'Probando otra vez…';
+    const probando = state.conn === 'connecting';
+    retryButton.disabled = probando;
+    if (retryLabel) retryLabel.textContent = probando ? 'Probando…' : 'Reintentar ahora';
+
+    if (bannerFace() !== 'caido') { retryLine.textContent = ''; return; }
+    if (!online) retryLine.textContent = 'Probá otra vez cuando el servidor esté en marcha.';
+    else if (probando) retryLine.textContent = 'Probando otra vez…';
+    else if (state.gaveUp) retryLine.textContent = 'Dejamos de insistir para no dar la lata. Tocá «Reintentar ahora» cuando el servidor esté listo.';
+    else retryLine.textContent = 'Lo seguimos intentando en segundo plano un rato más.';
   }
 
   function renderConn() {
     const labels = {
       online: ['is-on', 'Conectado'],
-      connecting: ['is-wait', 'Conectando…'],
-      offline: ['is-off', 'Sin conexión'],
+      connecting: ['is-wait', state.everFailed ? 'Reintentando…' : 'Conectando…'],
+      offline: ['is-off', state.gaveUp ? 'Sin servidor' : 'Sin conexión'],
     };
     const [cls, label] = labels[state.conn] || labels.offline;
     dot.className = `conn-dot ${cls}`;
@@ -563,22 +593,18 @@ export function mount(root, ctx, params = {}) {
     refreshControls();
   }
 
-  function setConn(next, { latency, retryInMs } = {}) {
-    const changed = state.conn !== next;
+  function setConn(next, { latency, gaveUp } = {}) {
+    const antes = bannerFace();
     state.conn = next;
     if (latency !== undefined) state.latency = latency;
-    state.retryAt = retryInMs ? Date.now() + retryInMs : null;
+    if (gaveUp !== undefined) state.gaveUp = !!gaveUp;
+    if (next === 'offline') state.everFailed = true;
+    if (next === 'online') { state.everFailed = false; state.gaveUp = false; }
+    if (next !== 'connecting') stopTimer('connect');
 
-    if (next === 'online') {
-      stopTimer('connect');
-      stopTimer('countdown');
-    } else if (next === 'offline') {
-      stopTimer('connect');
-      startCountdown();
-    }
-
-    if (changed) renderAll();
-    else { renderConn(); renderRetryLine(); }
+    /* Repintar entero solo cuando de verdad cambia lo que se ve. */
+    if (antes !== bannerFace()) renderAll();
+    else { renderConn(); renderRetryLine(); refreshControls(); }
   }
 
   /* ------------------------------ acciones ----------------------------- */
@@ -689,7 +715,6 @@ export function mount(root, ctx, params = {}) {
 
   function stopTimer(which) {
     if (which === 'connect' && connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
-    if (which === 'countdown' && countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
     if (which === 'search' && searchTimer) { clearInterval(searchTimer); searchTimer = null; }
     if (which === 'refresh' && refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
   }
@@ -700,14 +725,6 @@ export function mount(root, ctx, params = {}) {
       connectTimer = null;
       if (alive && state.conn !== 'online') setConn('offline');
     }, CONNECT_TIMEOUT_MS);
-  }
-
-  function startCountdown() {
-    stopTimer('countdown');
-    countdownTimer = setInterval(() => {
-      if (!alive) return;
-      renderRetryLine();
-    }, 1000);
   }
 
   function startSearchTimer() {
@@ -742,7 +759,7 @@ export function mount(root, ctx, params = {}) {
     /* 'closed' (reconnecting on its own) or 'idle' (we hung up). */
     stopSearch(false);
     stopTimer('refresh');
-    setConn('offline', { latency: null, retryInMs: msg.retryInMs || null });
+    setConn('offline', { latency: null, gaveUp: !!msg.gaveUp });
   }
 
   function onMessage(msg) {
@@ -806,6 +823,7 @@ export function mount(root, ctx, params = {}) {
   /* ------------------------------- arranque ---------------------------- */
 
   renderQuickChips();
+  renderServerHint();
   renderIdentity();
   renderAll();
 
@@ -827,7 +845,6 @@ export function mount(root, ctx, params = {}) {
       alive = false;
       try { unsubscribe(); } catch { /* ignore */ }
       stopTimer('connect');
-      stopTimer('countdown');
       stopTimer('search');
       stopTimer('refresh');
       if (state.searching) {
