@@ -8,6 +8,7 @@
 import http from 'node:http';
 import { test, assert, assertEqual, run } from './harness.js';
 import { createOnline, toEndpoint } from '../web/js/online.js';
+import { createGame } from '../web/js/game.js';
 
 const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
@@ -55,6 +56,26 @@ test('lo que no se entiende se rechaza en vez de inventarlo', () => {
     'https://no vale', 'wss://a_b*c/ws', 'https://', '://x.com']) {
     assertEqual(toEndpoint(basura), null, 'deberia rechazar ' + JSON.stringify(basura));
   }
+});
+
+/* --------------------- el final que manda el servidor -------------------- */
+
+test('el motivo que redacta el servidor llega entero al jugador', () => {
+  /* El servidor manda el motivo ya escrito («Se acabó el tiempo: ganan las
+     blancas»). La pantalla lo pasaba como si fuera una clave interna, no
+     encontraba traduccion y enseñaba un «partida terminada» seco que no decia
+     ni como habia acabado. */
+  const partida = createGame({ mode: 'online' });
+  const texto = 'Se acabó el tiempo: ganan las blancas.';
+  const estado = partida.forceResult('1-0', texto, texto);
+  assertEqual(estado.text, texto, 'el motivo del servidor manda');
+  assertEqual(estado.result, '1-0', 'y el resultado es el que dice');
+});
+
+test('sin texto del servidor se sigue usando la traducción de siempre', () => {
+  const partida = createGame({ mode: 'online' });
+  const estado = partida.forceResult('0-1', 'abandono');
+  assert(typeof estado.text === 'string' && estado.text.length > 0, 'siempre hay algo que leer');
 });
 
 /* ------------------- de donde saca la direccion sola -------------------- */

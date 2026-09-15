@@ -10,6 +10,7 @@ import {
   deltaSpan, spinner, formatDate,
 } from './components.js';
 import { createGame } from '../game.js';
+import { ONLINE_ERRORS } from '../online.js';
 import { uciToMove, moveToSan } from '../chess.js';
 import { createBoard } from '../board.js';
 import { createClock, TIME_CONTROLS, CATEGORY_NAMES, timeCategory, formatClock } from '../clock.js';
@@ -160,6 +161,8 @@ export function mount(root, ctx, params = {}) {
   let board = null;
   let clock = null;
   let session = null;
+  let onlineRival = null;      // {name, elo} del rival online, para el historial
+  let onlineRatings = null;    // el cambio de puntuacion que manda el servidor
 
   /* ------------------------------- layout ------------------------------- */
 
@@ -174,10 +177,13 @@ export function mount(root, ctx, params = {}) {
      ocupa la primera (26 px) y `.board-stack` la segunda. Si no hay barra, la
      clase `no-eval` deja una sola columna. */
   /* La barra se construye siempre que el ajuste la pida, porque de ella sale
-     la precision del resumen final. Pero en partida puntuable NO se enseña:
-     ver en vivo si vas ganando es ayuda del motor tanto como una pista. */
+     la precision del resumen final. Pero NO se enseña donde ver en vivo si vas
+     ganando seria ayuda del motor: en partida puntuable contra la maquina, en
+     torneo, y sobre todo online, donde enfrente hay una persona que no la
+     tiene. Suelta o local si, que ahi no falsea ningun resultado. */
+  const ayudaFalsearia = ratedAtStart || mode === 'online' || mode === 'tournament';
   const bar = settings.showEvalBar !== false ? evalBar() : null;
-  const showBar = bar !== null && !ratedAtStart;
+  const showBar = bar !== null && !ayudaFalsearia;
   if (showBar) boardCol.appendChild(bar.node);
   else boardCol.classList.add('no-eval');
   stack.appendChild(boardHost);
@@ -595,12 +601,20 @@ export function mount(root, ctx, params = {}) {
 
   /** Deja claro en todo momento si la partida cuenta para la puntuacion. */
   function paintRated() {
-    if (mode !== 'bot') {
+    if (mode === 'tournament' || mode === 'local') {
       ratedChip.textContent = mode === 'tournament' ? 'De torneo' : 'Amistosa';
       ratedChip.title = '';
       return;
     }
+    /* Online lo decide el servidor, y lo decia mal: ponia «Amistosa» en
+       partidas que si movian la puntuacion. */
     ratedChip.textContent = rated ? 'Puntuable' : 'Amistosa';
+    if (mode === 'online') {
+      ratedChip.title = rated
+        ? 'El resultado cambiará tu puntuación online.'
+        : 'Esta partida no cuenta para la puntuación.';
+      return;
+    }
     ratedChip.title = rated
       ? 'El resultado cambiará tu puntuación. Usar pistas o deshacer la volvería amistosa.'
       : (ratedAtStart ? 'Dejó de contar al usar una ayuda.' : 'Elegiste jugarla sin puntuación.');
@@ -669,6 +683,19 @@ export function mount(root, ctx, params = {}) {
             danger: true,
           });
           if (!ok || game.status.over) return;
+          /* Online no se puede terminar la partida por tu cuenta: hay que
+             decirselo al servidor, que es quien avisa al rival. Antes te
+             rendias solo en tu pantalla y el otro se quedaba jugando contra
+             nadie hasta que se le acababa el tiempo. */
+          if (mode === 'online') {
+            try {
+              ctx.online.resign(params.gameId);
+              setStatus('Te rendiste. Esperando al servidor…');
+            } catch {
+              ctx.toast?.('No pude mandar la rendición.', 'err');
+            }
+            return;
+          }
           game.resign(mode === 'local' ? game.turn() : myColor);
           finish();
         },
@@ -681,6 +708,18 @@ export function mount(root, ctx, params = {}) {
             game.offerDraw(game.turn());
             game.acceptDraw();
             finish();
+            return;
+          }
+          /* Contra una persona las tablas se ofrecen y las contesta ella. La
+             pantalla usaba aqui la logica de los bots: miraba la evaluacion y
+             decidia sola, sin preguntarle a nadie ni avisar al servidor. */
+          if (mode === 'online') {
+            try {
+              ctx.online.offerDraw(params.gameId);
+              ctx.toast?.('Tablas ofrecidas. Le toca contestar a tu rival.', '');
+            } catch {
+              ctx.toast?.('No pude ofrecer tablas.', 'err');
+            }
             return;
           }
           /* Un bot acepta las tablas solo si de verdad esta igualado. */
@@ -813,7 +852,10 @@ export function mount(root, ctx, params = {}) {
     }
 
     let record = null;
-    if (mode === 'bot' || mode === 'tournament') {
+    /* Online tambien se guarda: antes la partida se perdia entera —no quedaba
+       en el historial y «Analizar» abria un tablero vacio— aunque fuese la
+       unica contra una persona de verdad. */
+    if (mode === 'bot' || mode === 'tournament' || mode === 'online') {
       try {
         const facts = analyzeGame({
           sanMoves: game.sanMoves(),
@@ -824,15 +866,19 @@ export function mount(root, ctx, params = {}) {
           clockLeftMs: clock ? clock.getTimes()[myColor] : null,
           category,
           myElo: me.rating,
-          opponentElo: bot ? bot.elo : 1500,
+          opponentElo: bot ? bot.elo : (onlineRival?.elo ?? 1500),
           ...game.gameFacts(myColor),
         });
         record = recordResult({
           mode,
           category,
-          opponent: bot ? { name: bot.name, elo: bot.elo, botId: bot.id } : {},
+          opponent: bot
+            ? { name: bot.name, elo: bot.elo, botId: bot.id }
+            : (onlineRival ? { name: onlineRival.name, elo: onlineRival.elo } : {}),
           result,
-          rated,
+          /* La puntuacion online la lleva el servidor: recalcularla aqui
+             inventaria un segundo Elo que no cuadra con el suyo. */
+          rated: mode === 'online' ? false : rated,
           pgn: game.getPgn(),
           sanMoves: game.sanMoves(),
           facts,
@@ -871,7 +917,19 @@ export function mount(root, ctx, params = {}) {
 
     body.appendChild(el('p', { class: 'result-hero', text: game.status.text || '' }));
 
-    if (record && typeof record.delta === 'number' && rated) {
+    /* En online el cambio de puntuacion lo manda el servidor, que es quien la
+       lleva; el de aqui seria otro numero distinto. */
+    if (mode === 'online' && onlineRatings) {
+      const mio = onlineRatings[myColor === 'w' ? 'white' : 'black'];
+      if (mio && typeof mio.delta === 'number') {
+        body.appendChild(el('div', { class: 'row gap-6' },
+          el('span', { class: 'muted', text: 'Puntuación:' }),
+          el('span', { class: 'mono', text: String(Math.round(mio.before)) }),
+          el('span', { text: '→' }),
+          el('span', { class: 'mono strong', text: String(Math.round(mio.after)) }),
+          deltaSpan(mio.delta)));
+      }
+    } else if (mode !== 'online' && record && typeof record.delta === 'number' && rated) {
       const row = el('div', { class: 'row gap-6' },
         el('span', { class: 'muted', text: 'Puntuación:' }),
         el('span', { class: 'mono', text: String(Math.round(record.ratingBefore)) }),
@@ -918,6 +976,23 @@ export function mount(root, ctx, params = {}) {
         variant: 'primary',
         onClick: () => ctx.navigate(`#/torneo/${params.tournamentId}`),
       });
+    } else if (mode === 'online') {
+      /* Antes de esto, al terminar una partida online no habia ni revancha ni
+         forma de volver al lobby: solo «Analizar», que ademas abria un tablero
+         vacio. */
+      actions.push({
+        label: 'Pedir revancha',
+        variant: 'primary',
+        onClick: () => {
+          try {
+            ctx.online.rematch(params.gameId);
+            ctx.toast?.('Revancha pedida. Empieza en cuanto tu rival acepte.', '');
+          } catch {
+            ctx.toast?.('No pude pedir la revancha.', 'err');
+          }
+        },
+      });
+      actions.push({ label: 'Volver al lobby', onClick: () => ctx.navigate('#/online') });
     }
     /* `recordResult` devuelve la partida ya guardada: con su id el análisis la
        carga entera y se puede revisar jugada a jugada. Sin id se abría un
@@ -941,8 +1016,17 @@ export function mount(root, ctx, params = {}) {
    * la partida), reconstruye el tablero con lo que llegue y a partir de ahi
    * solo aplica lo que el servidor confirma.
    */
+  let salidaPuesta = false;
+
   function startOnline() {
     setStatus('Conectando con la partida…');
+    /* Si en 10 s no ha llegado la partida, algo pasa: mejor decirlo que dejar
+       al jugador mirando un «Conectando…» eterno. */
+    const aviso = setTimeout(() => {
+      if (destroyed || game) return;
+      handleOnlineEvent({ t: 'error', code: 'noSuchGame', message: 'La partida no llegó. Puede que ya no exista.' });
+    }, 10000);
+    cleanups.push(() => clearTimeout(aviso));
     const off = ctx.onOnlineEvent((msg) => {
       if (destroyed || !msg || msg.gameId && msg.gameId !== params.gameId) {
         if (!msg || msg.t !== 'gameStart') return;
@@ -961,9 +1045,30 @@ export function mount(root, ctx, params = {}) {
     }
   }
 
+  /**
+   * El reloj de online lo lleva el servidor; aqui solo se copia lo que manda y
+   * se pone a correr del lado que toca. Sin esto el reloj local no cambiaba
+   * nunca de bando: se vaciaba el del jugador que ya habia movido, cada
+   * cliente enseñaba una hora distinta, y quien ganaba por tiempo veia su
+   * propio reloj a cero.
+   */
+  function syncClocks(clocks, over = false) {
+    if (!clock) return;
+    clock.pause();
+    if (clocks) clock.setTimes(clocks);
+    if (!over && game && !game.status.over) clock.resume(game.turn());
+    paintClocks();
+  }
+
   function handleOnlineEvent(msg) {
-    if (msg.t === 'gameStart' && msg.game && msg.game.id === params.gameId) {
-      buildOnlineGame(msg.game);
+    if (msg.t === 'gameStart' && msg.game) {
+      if (msg.game.id === params.gameId) {
+        buildOnlineGame(msg.game);
+        return;
+      }
+      /* La revancha es una partida nueva, con otro id: hay que ir a ella o el
+         jugador se queda mirando la que acaba de terminar. */
+      if (!msg.resume && msg.game.youAre) ctx.navigate(`#/jugar/online/${msg.game.id}`);
       return;
     }
     if (!game) return;
@@ -972,12 +1077,25 @@ export function mount(root, ctx, params = {}) {
       return;
     }
     if (msg.t === 'gameOver' && msg.gameId === params.gameId) {
-      game.forceResult(msg.result, msg.reason || 'agreement');
+      onlineRatings = msg.ratings || null;
+      /* El motivo viene ya redactado por el servidor («Se acabó el tiempo:
+         ganan las blancas»); pasarlo entero evita el «partida terminada» seco
+         que se leia antes. */
+      game.forceResult(msg.result, msg.reason || 'agreement', msg.reason || null);
+      syncClocks(null, true);
       finish();
       return;
     }
     if (msg.t === 'chat' && msg.gameId === params.gameId) {
       say(`${msg.from}: ${msg.text}`);
+      return;
+    }
+    if (msg.t === 'drawOffer' && msg.gameId === params.gameId) {
+      ofrecenTablas(msg.from);
+      return;
+    }
+    if (msg.t === 'drawDeclined' && msg.gameId === params.gameId) {
+      ctx.toast?.('Tu rival no quiere tablas.', '');
       return;
     }
     if (msg.t === 'opponentGone' && msg.gameId === params.gameId) {
@@ -987,6 +1105,37 @@ export function mount(root, ctx, params = {}) {
     if (msg.t === 'opponentBack' && msg.gameId === params.gameId) {
       setStatus('Tu rival volvió.');
       sync({ animate: false });
+      return;
+    }
+    /* Si el servidor dice que esa partida no existe o que no es tuya, antes se
+       quedaba «Conectando con la partida…» para siempre, sin decir nada ni
+       dejar salir. */
+    if (msg.t === 'error' && !game) {
+      const motivo = ONLINE_ERRORS[msg.code] || msg.message || 'No pude entrar en la partida.';
+      setStatus(motivo);
+      if (!salidaPuesta) {
+        salidaPuesta = true;
+        panel.appendChild(el('div', { class: 'row row--wrap gap-6', style: { marginTop: '10px' } },
+          button('Volver al lobby', { variant: 'primary', onClick: () => ctx.navigate('#/online') })));
+      }
+    }
+  }
+
+  /** El rival ofrece tablas: se pregunta, y la respuesta va al servidor. */
+  async function ofrecenTablas(quien) {
+    ctx.sound?.play?.('notify');
+    const ok = await confirmDialog({
+      title: 'Tu rival ofrece tablas',
+      message: `${quien || 'Tu rival'} propone terminar en tablas. ¿Aceptás?`,
+      confirmLabel: 'Aceptar tablas',
+      cancelLabel: 'Seguir jugando',
+    });
+    if (destroyed || !game || game.status.over) return;
+    try {
+      if (ok) ctx.online.acceptDraw(params.gameId);
+      else ctx.online.declineDraw(params.gameId);
+    } catch {
+      ctx.toast?.('No pude contestar a la oferta.', 'err');
     }
   }
 
@@ -1003,6 +1152,16 @@ export function mount(root, ctx, params = {}) {
       rating: typeof info?.rating === 'number' ? Math.round(info.rating) : undefined,
       avatarSeed: info?.name || color,
     });
+
+    /* Online es el servidor quien dice si la partida puntua. La pantalla lo
+       daba siempre por amistoso, asi que mentia en las que si contaban. */
+    rated = payload.rated !== false;
+    const infoRival = payload.youAre === 'b' ? payload.white : payload.black;
+    onlineRival = {
+      name: infoRival?.name || 'Rival',
+      elo: typeof infoRival?.rating === 'number' ? Math.round(infoRival.rating) : 1500,
+    };
+    onlineRatings = null;
 
     game = createGame({
       mode: 'online',
@@ -1027,7 +1186,6 @@ export function mount(root, ctx, params = {}) {
     clock = base > 0
       ? createClock({ base, inc, onTick: () => paintClocks(), onFlag: () => { /* lo decide el servidor */ } })
       : null;
-    if (clock && payload.clocks) clock.setTimes(payload.clocks);
 
     if (board) board.destroy();
     clear(boardHost);
@@ -1046,6 +1204,7 @@ export function mount(root, ctx, params = {}) {
     buildPlayerCards();
     renderControls();
     sync({ animate: false });
+    syncClocks(payload.clocks, payload.status === 'over');
     ctx.sound?.play?.('gameStart');
   }
 
@@ -1072,16 +1231,18 @@ export function mount(root, ctx, params = {}) {
     if (ultima !== msg.uci || yaHechas.length === 0) {
       const hecho = game.playUci(msg.uci);
       if (hecho && hecho.ok !== false) {
-        if (clock && msg.clocks) clock.setTimes(msg.clocks);
+        syncClocks(msg.clocks);
         clearPremove();
         ctx.sound?.playMoveSound?.({ capture: /x/.test(msg.san || ''), check: /[+#]$/.test(msg.san || '') });
         viewIndex = -2;
         sync({ animate: true });
+        /* Tambien las del rival cuentan para la precision del resumen. */
+        refreshEval();
         runPremove();
         return;
       }
     }
-    if (clock && msg.clocks) clock.setTimes(msg.clocks);
+    syncClocks(msg.clocks);
     sync({ animate: false });
   }
 

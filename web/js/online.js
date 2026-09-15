@@ -12,7 +12,7 @@ const BACKOFF_STEPS = [1000, 2000, 4000, 8000, 15000];
    despertar a uno dormido, y despues se para y queda el boton de reintentar. */
 const MAX_ATTEMPTS = 8;
 
-export function createOnline({ url, onEvent, backoff, maxAttempts } = {}) {
+export function createOnline({ url, onEvent, backoff, maxAttempts, token = null, name = null } = {}) {
   const endpoint = toEndpoint(url) || defaultEndpoint();
   const steps = Array.isArray(backoff) && backoff.length ? backoff : BACKOFF_STEPS;
   const topeIntentos = Number.isFinite(maxAttempts) ? maxAttempts : MAX_ATTEMPTS;
@@ -24,7 +24,7 @@ export function createOnline({ url, onEvent, backoff, maxAttempts } = {}) {
   let pingTimer = null;
   let latency = null;
   let manualClose = false;
-  let credentials = { name: 'Invitado', token: null };
+  let credentials = { name: name || 'Invitado', token: token || null };
   const queue = [];
 
   function emit(msg) {

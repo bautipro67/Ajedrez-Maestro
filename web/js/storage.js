@@ -123,6 +123,10 @@ export function defaultSettings() {
        rellenarlo cuando la pagina vive en itch.io o GitHub Pages y el
        servidor esta en otro sitio. */
     serverUrl: '',
+    /* El servidor da un pase al entrar; guardarlo es lo que permite volver a
+       la misma partida y a la misma puntuacion despues de recargar. Sin esto,
+       cada recarga creaba un invitado nuevo y la partida en curso se perdia. */
+    onlineToken: '',
   };
 }
 

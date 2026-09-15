@@ -146,7 +146,7 @@ export function createGame(config = {}) {
 
   /* ------------------------------ ending ------------------------------ */
 
-  function setOver(reason, winner) {
+  function setOver(reason, winner, text = null) {
     if (status.over) return status;
     const result = winner === C.WHITE ? '1-0' : winner === C.BLACK ? '0-1' : '1/2-1/2';
     status = {
@@ -154,7 +154,10 @@ export function createGame(config = {}) {
       result,
       reason,
       winner: winner === null || winner === undefined ? null : winner,
-      text: RESULT_TEXT[reason] || 'partida terminada',
+      /* El servidor de online manda el motivo ya redactado y no tiene por que
+         coincidir con ninguna clave de aqui: si viene, se usa. Antes se perdia
+         y el jugador leia «partida terminada» en vez de «se acabo el tiempo». */
+      text: text || RESULT_TEXT[reason] || 'partida terminada',
     };
     drawOfferFrom = null;
     emit('over', status);
@@ -313,9 +316,9 @@ export function createGame(config = {}) {
     },
 
     /** Force a specific ending (used by the online client and adjudication). */
-    forceResult(result, reason) {
+    forceResult(result, reason, text = null) {
       const winner = result === '1-0' ? C.WHITE : result === '0-1' ? C.BLACK : null;
-      return setOver(reason || 'adjudicated', winner);
+      return setOver(reason || 'adjudicated', winner, text);
     },
 
     setClockSnapshot(times) {

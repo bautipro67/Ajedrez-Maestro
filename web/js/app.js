@@ -104,7 +104,15 @@ const ctx = {
     if (!state.online) {
       state.online = createOnline({
         url: (state.settings && state.settings.serverUrl) || undefined,
+        token: (state.settings && state.settings.onlineToken) || null,
+        name: state.profile?.name || null,
         onEvent: (msg) => {
+          /* El pase que da el servidor se guarda: es lo que te devuelve a tu
+             misma identidad —y a tu partida— cuando recargas la pagina. */
+          if (msg && msg.t === 'welcome' && msg.you && msg.you.token
+              && msg.you.token !== state.settings?.onlineToken) {
+            try { ctx.saveSettings({ onlineToken: msg.you.token }); } catch { /* ignore */ }
+          }
           for (const cb of onlineListeners) cb(msg);
         },
       });
