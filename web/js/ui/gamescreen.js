@@ -145,7 +145,11 @@ export function mount(root, ctx, params = {}) {
   }
 
   const category = mode === 'bot' ? 'bots' : timeCategory(tc.base, tc.inc);
-  const rated = mode === 'bot' ? query.rated !== '0' : false;
+  /* La partida empieza puntuable o no, pero puede DEJAR de serlo: pedir una
+     pista o deshacer una jugada es ayuda del motor, y subir el Elo con eso
+     seria hacerse trampas al solitario. */
+  const ratedAtStart = mode === 'bot' ? query.rated !== '0' : false;
+  let rated = ratedAtStart;
   /* En torneo no se deshace ni se piden pistas: falsearia la clasificacion. */
   const allowUndo = mode !== 'online' && mode !== 'tournament' && query.undo !== '0';
   const allowHints = mode !== 'online' && mode !== 'tournament' && query.hints !== '0';
@@ -170,8 +174,12 @@ export function mount(root, ctx, params = {}) {
   /* `.game-board-col` es una rejilla de dos columnas: la barra de evaluacion
      ocupa la primera (26 px) y `.board-stack` la segunda. Si no hay barra, la
      clase `no-eval` deja una sola columna. */
+  /* La barra se construye siempre que el ajuste la pida, porque de ella sale
+     la precision del resumen final. Pero en partida puntuable NO se enseña:
+     ver en vivo si vas ganando es ayuda del motor tanto como una pista. */
   const bar = settings.showEvalBar !== false ? evalBar() : null;
-  if (bar) boardCol.appendChild(bar.node);
+  const showBar = bar !== null && !ratedAtStart;
+  if (showBar) boardCol.appendChild(bar.node);
   else boardCol.classList.add('no-eval');
   stack.appendChild(boardHost);
   boardCol.appendChild(stack);
@@ -190,10 +198,11 @@ export function mount(root, ctx, params = {}) {
   const controls = el('div', { class: 'game-controls' });
   const statusLine = el('p', { class: 'muted small' });
   const openingLine = el('p', { class: 'tiny faint' });
+  const ratedChip = el('span', { class: 'chip' });
 
   panel.appendChild(topSlot);
   panel.appendChild(bubble);
-  panel.appendChild(openingLine);
+  panel.appendChild(el('div', { class: 'row row--wrap gap-6' }, ratedChip, openingLine));
   panel.appendChild(moves.node);
   panel.appendChild(statusLine);
   panel.appendChild(controls);
@@ -292,7 +301,7 @@ export function mount(root, ctx, params = {}) {
          tarda en responder, asi que en local no se ofrece. */
       onPremove: settings.premove === false || mode === 'local' ? null : handlePremove,
     });
-    if (bar) bar.setOrientation(myColor === 'b' ? 'black' : 'white');
+    if (showBar) bar.setOrientation(myColor === 'b' ? 'black' : 'white');
 
     buildPlayerCards();
     ctx.ai?.newGame?.();
@@ -339,6 +348,19 @@ export function mount(root, ctx, params = {}) {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Quita el caracter puntuable de la partida. Se llama al usar cualquier
+   * ayuda: asi nadie infla su puntuacion con el motor delante.
+   */
+  function dropRated(motivo) {
+    if (!rated) return;
+    rated = false;
+    ctx.toast?.(`La partida pasa a ser amistosa: ${motivo}.`, 'warn');
+    renderControls();
+    paintStatus();
+    paintRated();
   }
 
   /* --------------------------- premovimiento ---------------------------- */
@@ -497,6 +519,11 @@ export function mount(root, ctx, params = {}) {
     paintClocks();
     paintStatus();
     paintOpening();
+    paintRated();
+    /* Los controles dependen del estado (deshacer necesita jugadas hechas,
+       «volver al presente» solo vale mirando el pasado). Sin repintarlos aqui,
+       el boton de deshacer no aparecia hasta que otra cosa forzara el redibujo. */
+    renderControls();
   }
 
   function paintPlayers() {
@@ -560,6 +587,19 @@ export function mount(root, ctx, params = {}) {
 
   function setStatus(text) {
     statusLine.textContent = text;
+  }
+
+  /** Deja claro en todo momento si la partida cuenta para la puntuacion. */
+  function paintRated() {
+    if (mode !== 'bot') {
+      ratedChip.textContent = mode === 'tournament' ? 'De torneo' : 'Amistosa';
+      ratedChip.title = '';
+      return;
+    }
+    ratedChip.textContent = rated ? 'Puntuable' : 'Amistosa';
+    ratedChip.title = rated
+      ? 'El resultado cambiará tu puntuación. Usar pistas o deshacer la volvería amistosa.'
+      : (ratedAtStart ? 'Dejó de contar al usar una ayuda.' : 'Elegiste jugarla sin puntuación.');
   }
 
   function say(text) {
@@ -657,6 +697,7 @@ export function mount(root, ctx, params = {}) {
       controls.appendChild(button('Deshacer', {
         size: 'sm',
         onClick: () => {
+          dropRated('deshiciste una jugada');
           const plies = mode === 'local' ? 1 : 2;
           game.takeback(Math.min(plies, game.ply()));
           clearPremove();
@@ -672,6 +713,7 @@ export function mount(root, ctx, params = {}) {
         size: 'sm',
         onClick: async () => {
           if (!myTurn()) return;
+          dropRated('pediste una pista');
           hintsLeft--;
           renderControls();
           try {
@@ -690,7 +732,7 @@ export function mount(root, ctx, params = {}) {
 
     controls.appendChild(button('Girar', {
       size: 'sm', title: 'Girar el tablero (tecla F)',
-      onClick: () => { board?.flip(); if (bar) bar.setOrientation(board.getOrientation()); },
+      onClick: () => { board?.flip(); if (showBar) bar.setOrientation(board.getOrientation()); },
     }));
 
     controls.appendChild(button('Copiar PGN', {
