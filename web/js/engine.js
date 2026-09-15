@@ -533,7 +533,11 @@ export function createSearcher(options = {}) {
       };
     }
 
-    const entries = rootMoves.map((move) => ({ move, score: -INFINITE, pv: [move], mate: null }));
+    /* `exact` distingue una puntuacion de verdad de una cota. El sondeo de
+       ventana nula que falla bajo solo demuestra "no supera a la mejor", y su
+       valor se queda pegado a la de la mejor: quien reparta entre jugadas
+       mirando esos numeros creera que todas valen casi lo mismo. */
+    const entries = rootMoves.map((move) => ({ move, score: -INFINITE, pv: [move], mate: null, exact: false }));
     let bestScore = 0;
     let bestEntry = entries[0];
     let completedDepth = 0;
@@ -572,6 +576,7 @@ export function createSearcher(options = {}) {
       first.score = firstScore;
       first.mate = mateIn(firstScore);
       first.pv = rootPv(first.move);
+      first.exact = true;
 
       let iterationBest = first;
       let cut = false;
@@ -580,12 +585,14 @@ export function createSearcher(options = {}) {
         currentPly = 0;
         makeMove(pos, entry.move);
         let score;
+        let exacto = true;
         if (i < exactCount) {
           score = -negamax(depth - 1, -INFINITE, INFINITE, 1, true);
         } else {
           const bound = iterationBest.score;
           score = -negamax(depth - 1, -bound - 1, -bound, 1, true);
           if (score > bound) score = -negamax(depth - 1, -INFINITE, -bound, 1, true);
+          else exacto = false;
         }
         unmakeMove(pos);
         if (stopped) {
@@ -595,6 +602,7 @@ export function createSearcher(options = {}) {
         entry.score = score;
         entry.mate = mateIn(score);
         entry.pv = rootPv(entry.move);
+        entry.exact = exacto;
         if (score > iterationBest.score) iterationBest = entry;
       }
 

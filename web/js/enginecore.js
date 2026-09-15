@@ -86,6 +86,14 @@ export function handleBotMove(msg) {
 
   const inCheckNow = C.inCheck(pos);
   const blind = profile.tacticalBlindness > 0 && rng() < profile.tacticalBlindness;
+  /* De cierto nivel para arriba el bot no tira dados: ni ruido, ni errores a
+     proposito, ni una temperatura que le haga preferir la segunda. Entonces
+     repartir con softmax sobre las puntuaciones de raiz no aporta nada y si
+     estorba, porque obliga a puntuarlas todas con exactitud y eso cuesta dos
+     plies. Estos juegan la mejor, que es lo que se espera de ellos. */
+  const determinista = profile.temperature <= 20
+    && profile.blunderRate <= 0.02
+    && !blind;
 
   const limits = {
     depth: blind ? Math.min(2, profile.depth) : profile.depth,
@@ -98,11 +106,18 @@ export function handleBotMove(msg) {
     maxQDepth: profile.maxQDepth,
     useNullMove: profile.depth >= 4,
     useLmr: profile.depth >= 4,
-    /* Puntuar con exactitud TODAS las jugadas de raiz cuesta tres o cuatro
-       plies. Los bots flojos lo necesitan, porque reparten con softmax sobre
-       el conjunto; los fuertes tienen la temperatura tan baja que solo miran
-       las primeras, asi que ahi se cambia exactitud por profundidad. */
-    exactRootScores: profile.temperature <= 60 ? 8 : true,
+    /* Puntuar con exactitud una jugada de raiz cuesta una busqueda con la
+       ventana abierta, varias veces mas cara que el sondeo normal: cada una de
+       mas se paga en profundidad. Solo hacen falta las que el bot pueda llegar
+       a elegir de verdad —el abanico del softmax y el del error deliberado—.
+       Un bot fuerte, con temperatura de un puñado de centipeones y sin errores
+       a proposito, no mira mas alla de las tres primeras. */
+    /* Puntuar con exactitud una jugada de raiz cuesta una busqueda con la
+       ventana abierta, varias veces mas cara que el sondeo normal, y se paga
+       en profundidad. Hacen falta para los bots que reparten entre varias
+       jugadas; el que juega siempre la mejor no necesita ninguna, porque la
+       mejor la garantiza la propia busqueda. */
+    exactRootScores: determinista ? 1 : (profile.temperature <= 60 ? 8 : true),
   };
 
   const started = Date.now();
@@ -119,7 +134,7 @@ export function handleBotMove(msg) {
     phase: rootMoves.length,
   };
 
-  let chosen = chooseBotMove(rootMoves, profile, rng, ctx);
+  let chosen = determinista ? (result.best || 0) : chooseBotMove(rootMoves, profile, rng, ctx);
   if (!chosen || !legal.includes(chosen)) chosen = result.best || legal[0];
 
   const picked = rootMoves.find((m) => m.move === chosen);

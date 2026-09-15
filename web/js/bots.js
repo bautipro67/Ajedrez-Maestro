@@ -46,12 +46,25 @@ export function strengthProfile(elo) {
   const quiescence = rating >= 900;
   return {
     depth: clamp(Math.round(1 + t * 16), 1, 18),
-    nodes: Math.round(200 * Math.pow(10, t * 3.8)),
-    timeMs: clamp(Math.round(40 + t * 2400), 40, 2600),
-    evalNoise: Math.round(180 * decay(2.2)),
-    blunderRate: Math.round(380 * decay(1.9)) / 1000,
-    tacticalBlindness: Math.round(450 * decay(2.1)) / 1000,
-    temperature: Math.max(6, Math.round(320 * decay(1.6))),
+    nodes: Math.round(200 * Math.pow(10, t * 4.1)),
+    /* Curva convexa a proposito: al de 1200 no le hace falta mas tiempo, y
+       al de 2900 si. Lo que le faltaba a los mejores era profundidad, y la
+       profundidad aqui la compra el reloj, no el tope de nodos. */
+    timeMs: clamp(Math.round(40 + 5000 * Math.pow(t, 2.2)), 40, 5200),
+    /* Las exponentes mandan mucho mas que los coeficientes: con las de antes,
+       un bot de 2200 se equivocaba a proposito el 3% de las jugadas —mas de
+       una por partida— y jugaba como uno de 1600. Ahora el desorden se apaga
+       antes, y de 2250 para arriba practicamente no queda nada. */
+    evalNoise: Math.round(180 * decay(2.6)),
+    blunderRate: Math.round(380 * decay(2.8)) / 1000,
+    tacticalBlindness: Math.round(450 * decay(3.0)) / 1000,
+    temperature: Math.max(6, Math.round(320 * decay(2.0))),
+    /* Cuanto puede empeorar una jugada normal respecto de la mejor. La
+       temperatura sola no servia de tope: un bot de 1800 buscaba mas hondo
+       que uno de 1300 y luego repartia entre ocho jugadas, asi que jugaba
+       peor que el flojo. Los errores gordos ya los pone blunderRate, aparte
+       y a proposito. */
+    choiceWindow: Math.round(18 + 300 * decay(1.8)),
     quiescence,
     maxQDepth: quiescence ? clamp(2 + Math.round(t * 7), 2, 8) : 0,
     thinkMs: [Math.round(250 + t * 600), Math.round(900 + t * 2600)],
@@ -131,6 +144,14 @@ export function chooseBotMove(rootMoves, profile, rng, ctx = {}) {
   if (!Array.isArray(rootMoves) || rootMoves.length === 0) return 0;
   if (rootMoves.length === 1) return rootMoves[0].move;
 
+  /* Solo se reparte entre las jugadas con puntuacion exacta. Las demas traen
+     una cota pegada a la de la mejor, y tomarlas por buenas hacia que un bot
+     con temperatura alta eligiera casi al azar entre todas las legales. */
+  const exactas = rootMoves.filter((entry) => entry.exact !== false);
+  if (exactas.length === 0) return rootMoves[0].move;
+  if (exactas.length === 1) return exactas[0].move;
+  rootMoves = exactas;
+
   const random = typeof rng === 'function' ? rng : Math.random;
   const temperature = Math.max(1, Number(profile && profile.temperature) || 1);
   const blunderRate = clamp(Number(profile && profile.blunderRate) || 0, 0, 1);
@@ -139,6 +160,14 @@ export function chooseBotMove(rootMoves, profile, rng, ctx = {}) {
   const pos = ctx.pos || null;
   const moveNumber = Number(ctx.moveNumber) || 1;
   const losing = Number(ctx.materialDiff) < -150;
+
+  /* Fuera de la ventana no se elige en juego normal: eso es un error gordo y
+     tiene su propio camino mas abajo. */
+  const ventana = Math.max(20, Number(profile && profile.choiceWindow) || 9999);
+  const tope = Math.max(...rootMoves.map((e) => Number(e.score) || 0));
+  const dentro = rootMoves.filter((e) => (Number(e.score) || 0) >= tope - ventana);
+  if (dentro.length === 1) return dentro[0].move;
+  rootMoves = dentro.length ? dentro : rootMoves;
 
   const scored = rootMoves.map((entry) => {
     const score = Number(entry.score) || 0;

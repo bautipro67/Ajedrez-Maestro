@@ -316,4 +316,52 @@ test('botLine recorre el repertorio', () => {
   assert(vistas.size >= 2, 'siempre dice lo mismo al saludar');
 });
 
+/* ------------------- de donde sale la fuerza de verdad ------------------- */
+
+test('no se reparte entre puntuaciones que solo son cotas', () => {
+  /* El sondeo de ventana nula que falla bajo deja un numero pegado al de la
+     mejor jugada. Tomarlo por bueno hacia que un bot con temperatura alta
+     eligiera casi al azar entre todas las legales, y que uno de 1800 jugase
+     peor que uno de 1300 por buscar mas hondo. */
+  const raiz = [
+    { move: 11, score: 100, exact: true },
+    { move: 22, score: 99, exact: false },
+    { move: 33, score: 98, exact: false },
+  ];
+  const perfil = { temperature: 300, blunderRate: 0, choiceWindow: 900 };
+  for (let i = 0; i < 40; i++) {
+    const elegida = chooseBotMove(raiz, perfil, () => (i * 0.023) % 1);
+    assertEqual(elegida, 11, 'con cotas de por medio solo vale la exacta');
+  }
+});
+
+test('la ventana de elección impide las jugadas malas en juego normal', () => {
+  const raiz = [
+    { move: 11, score: 100, exact: true },
+    { move: 22, score: -300, exact: true },
+  ];
+  const perfil = { temperature: 400, blunderRate: 0, choiceWindow: 60 };
+  for (let i = 0; i < 40; i++) {
+    assertEqual(chooseBotMove(raiz, perfil, () => (i * 0.037) % 1), 11,
+      'perder 400 cp no es una jugada normal a ninguna temperatura');
+  }
+});
+
+test('la curva de fuerza baja el desorden según sube el Elo', () => {
+  let ventanaAnterior = Infinity;
+  let temperaturaAnterior = Infinity;
+  for (const elo of [250, 700, 1000, 1400, 1800, 2200, 2500, 2900]) {
+    const p = strengthProfile(elo);
+    assert(p.choiceWindow <= ventanaAnterior,
+      `la ventana tiene que encogerse y en ${elo} sube a ${p.choiceWindow}`);
+    assert(p.temperature <= temperaturaAnterior,
+      `la temperatura tiene que bajar y en ${elo} sube a ${p.temperature}`);
+    ventanaAnterior = p.choiceWindow;
+    temperaturaAnterior = p.temperature;
+  }
+  const cima = strengthProfile(2900);
+  assert(cima.blunderRate === 0, 'el mejor bot no se equivoca a proposito');
+  assert(cima.choiceWindow <= 20, 'y no acepta perder nada apreciable');
+});
+
 run('bots.js');
