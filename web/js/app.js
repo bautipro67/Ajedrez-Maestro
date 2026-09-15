@@ -45,6 +45,12 @@ const ROUTES = [
   { test: /^#\/online\/?$/, load: () => import('./ui/online.js'), params: () => ({}), nav: '#/online' },
   { test: /^#\/torneos\/?$/, load: () => import('./ui/tournaments.js'), params: () => ({}), nav: '#/torneos' },
   {
+    test: /^#\/entrenamiento(?:\/(propias))?\/?$/,
+    load: () => import('./ui/puzzles.js'),
+    params: (m) => ({ source: m[1] || 'juego' }),
+    nav: '#/entrenamiento',
+  },
+  {
     test: /^#\/torneo\/([\w-]+)$/,
     load: () => import('./ui/tournaments.js'),
     params: (m) => ({ tournamentId: m[1] }),

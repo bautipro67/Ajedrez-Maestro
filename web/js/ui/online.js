@@ -21,7 +21,7 @@ const QUICK_TC = ['1+0', '3+0', '3+2', '5+0', '10+0', '15+10'];
 const OFFLINE_MODES = [
   {
     icon: '🤖', title: 'Contra la máquina', route: '#/bots',
-    desc: '28 rivales con estilo propio, de 250 a 2900 de Elo. Tu puntuación sube y baja igual que online.',
+    desc: '29 rivales con estilo propio, de 250 a 2900 de Elo. Tu puntuación sube y baja igual que online.',
   },
   {
     icon: '👥', title: 'Local a dos', route: '#/jugar/local',

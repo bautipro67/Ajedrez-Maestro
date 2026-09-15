@@ -12,7 +12,7 @@ import { loadGames, loadTournaments } from '../storage.js';
 const MODES = [
   {
     icon: '🤖', title: 'Contra la máquina', route: '#/bots',
-    desc: 'Enfrentá a 28 personajes con estilos y niveles distintos, de 250 a 2900 de Elo.',
+    desc: 'Enfrentá a 29 personajes con estilos y niveles distintos, de 250 a 2900 de Elo.',
   },
   {
     icon: '🌐', title: 'Jugar online', route: '#/online',
@@ -25,6 +25,10 @@ const MODES = [
   {
     icon: '🏆', title: 'Torneos', route: '#/torneos',
     desc: 'Suizo, liga, eliminatoria o arena contra un cuadro de bots. Con clasificación real.',
+  },
+  {
+    icon: '🎯', title: 'Entrenamiento', route: '#/entrenamiento',
+    desc: 'Posiciones con una sola jugada buena, y los errores de tus propias partidas convertidos en problemas.',
   },
 ];
 
@@ -188,7 +192,7 @@ function suggestionsCard(ctx) {
       body.appendChild(row);
     }
 
-    body.appendChild(el('a', { class: 'btn btn--ghost btn--sm', href: '#/bots', text: 'Ver los 28 bots' }));
+    body.appendChild(el('a', { class: 'btn btn--ghost btn--sm', href: '#/bots', text: 'Ver los 29 bots' }));
   }).catch(() => {
     body.appendChild(el('p', { class: 'muted small', text: 'No se pudo cargar el plantel de bots.' }));
   });

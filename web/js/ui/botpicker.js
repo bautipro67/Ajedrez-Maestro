@@ -145,7 +145,7 @@ export function mount(root, ctx, params = {}) {
 
     /* Filtros por tramo */
     const tiersUsed = botsByTier().map((group) => group.tier.key);
-    /* Con 28 rivales y ocho estilos, los filtros no caben en una linea. */
+    /* Con 29 rivales y ocho estilos, los filtros no caben en una linea. */
     const tierRow = el('div', { class: 'row gap-6 row--wrap' });
     tierRow.appendChild(chip('Todos', {
       active: state.tier === null,

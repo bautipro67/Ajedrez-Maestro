@@ -100,6 +100,18 @@ export function defaultProfile() {
     },
     achievements: [],
     defeatedBots: [],
+    /* El entrenamiento tactico lleva su propia puntuacion: resolver problemas
+       no es lo mismo que jugar partidas y mezclarlas no diria nada de ninguna
+       de las dos. */
+    puzzles: {
+      rating: 900,
+      solved: 0,
+      failed: 0,
+      bestStreak: 0,
+      currentStreak: 0,
+      recent: [],      // ids de los ultimos, para no repetir enseguida
+      byTheme: {},
+    },
   };
 }
 
@@ -223,6 +235,7 @@ export function deleteTournament(id) {
 export function recordResult({
   mode, category = 'bots', opponent = {}, result, rated = true,
   pgn = null, sanMoves = [], facts = {}, totalBots = 0, tournamentWon = false, plies = 0, timeMs = 0,
+  myColor = null,
 }) {
   const root = readRoot();
   const profile = root.profile;
@@ -289,6 +302,9 @@ export function recordResult({
     id: randomId('g'), ts: Date.now(), mode, category, result, rated,
     opponent: { name: opponent.name || '—', elo: opponent.elo ?? null, botId: opponent.botId || null },
     ratingBefore, ratingAfter, delta, plies: plies || sanMoves.length, pgn,
+    /* De que color jugaste: sin esto, al sacar problemas de tus partidas no se
+       sabe cuales de los errores son tuyos y cuales del rival. */
+    myColor: myColor === 'b' ? 'b' : 'w',
   };
   root.games.unshift(gameRecord);
   if (root.games.length > MAX_GAMES) root.games.length = MAX_GAMES;
@@ -298,6 +314,38 @@ export function recordResult({
 }
 
 /** Unlock achievements outside of a finished game (e.g. the analysis board). */
+/**
+ * Apunta el resultado de un problema y devuelve el perfil ya guardado.
+ * Se queda con los ultimos 60 ids para no volver a poner el mismo enseguida.
+ */
+export function recordPuzzle({ id, solved, theme = 'ventaja', rating = null, delta = 0 }) {
+  const root = readRoot();
+  const profile = root.profile;
+  if (!profile.puzzles) profile.puzzles = defaultProfile().puzzles;
+  const p = profile.puzzles;
+
+  if (solved) {
+    p.solved = (p.solved || 0) + 1;
+    p.currentStreak = (p.currentStreak || 0) + 1;
+    p.bestStreak = Math.max(p.bestStreak || 0, p.currentStreak);
+  } else {
+    p.failed = (p.failed || 0) + 1;
+    p.currentStreak = 0;
+  }
+  if (typeof rating === 'number' && Number.isFinite(rating)) p.rating = Math.round(rating);
+  const porTema = p.byTheme[theme] || { solved: 0, failed: 0 };
+  if (solved) porTema.solved += 1; else porTema.failed += 1;
+  p.byTheme[theme] = porTema;
+
+  if (id) {
+    p.recent = [id, ...(p.recent || []).filter((x) => x !== id)].slice(0, 60);
+  }
+  p.lastDelta = Math.round(delta) || 0;
+
+  writeRoot(root);
+  return profile;
+}
+
 export function unlockAchievements(extraContext = {}) {
   const root = readRoot();
   const unlocked = evaluateAchievements({

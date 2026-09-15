@@ -167,6 +167,8 @@ const SCREENS = [
   { label: 'ajustes', file: 'settings.js', params: {} },
   { label: 'analisis', file: 'analysis.js', params: { gameId: null } },
   { label: 'online', file: 'online.js', params: {} },
+  { label: 'entrenamiento', file: 'puzzles.js', params: { source: 'juego' } },
+  { label: 'entrenamiento con tus partidas', file: 'puzzles.js', params: { source: 'propias' } },
 ];
 
 const results = [];

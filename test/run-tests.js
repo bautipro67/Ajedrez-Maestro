@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { summary } from './harness.js';
 
-const ORDER = ['perft', 'rules', 'edge', 'engine', 'book', 'bots', 'elo', 'tournament', 'report', 'screens',
+const ORDER = ['perft', 'rules', 'edge', 'engine', 'book', 'bots', 'elo', 'tournament', 'report', 'puzzles', 'screens',
   'onlineclient', 'ws', 'server'];
 
 const dir = path.dirname(fileURLToPath(import.meta.url));

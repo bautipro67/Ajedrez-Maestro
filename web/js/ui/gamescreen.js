@@ -881,6 +881,7 @@ export function mount(root, ctx, params = {}) {
           /* La puntuacion online la lleva el servidor: recalcularla aqui
              inventaria un segundo Elo que no cuadra con el suyo. */
           rated: mode === 'online' ? false : rated,
+          myColor,
           pgn: game.getPgn(),
           sanMoves: game.sanMoves(),
           facts,

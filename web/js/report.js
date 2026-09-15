@@ -232,6 +232,9 @@ export function buildReport(moves = []) {
 
     entradas.push({
       ply: i + 1, san: m.san || '', uci: m.uci || null, color,
+      /* La posicion viaja con la jugada: de ahi salen los problemas de
+         entrenamiento, y buscarla luego por el SAN no era de fiar. */
+      fenBefore: m.fenBefore || null, fenAfter: m.fenAfter || null,
       clase, precision, winBefore, winAfter, perdidaWin, fase,
       bestUci: m.bestUci || null, bestSan: m.bestSan || null,
       cpLoss: Number.isFinite(m.cpLoss) ? Math.max(0, m.cpLoss) : null,
