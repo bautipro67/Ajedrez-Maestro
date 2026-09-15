@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Portada</title>
+<style>
+  /* Lienzo exacto de la portada de itch.io. Se mira a 630x500 pero en los
+     listados se reduce a la mitad, asi que todo va en grande y con contraste. */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0a09; display: flex; align-items: center; justify-content: center; }
+  .portada {
+    position: relative;
+    width: 630px; height: 500px;
+    overflow: hidden;
+    background: radial-gradient(120% 90% at 78% 12%, #2c2a26 0%, #161512 58%, #101010 100%);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #ECEAE7;
+  }
+  /* Damero de fondo, apenas insinuado */
+  .damero {
+    position: absolute; inset: -40px -40px auto -40px; height: 580px;
+    transform: rotate(-12deg);
+    opacity: .10;
+    background-image:
+      linear-gradient(45deg, #739552 25%, transparent 25%, transparent 75%, #739552 75%),
+      linear-gradient(45deg, #739552 25%, transparent 25%, transparent 75%, #739552 75%);
+    background-size: 84px 84px;
+    background-position: 0 0, 42px 42px;
+  }
+  .brillo {
+    position: absolute; width: 420px; height: 420px; right: -120px; top: -140px;
+    background: radial-gradient(circle, rgba(129,182,76,.30) 0%, transparent 68%);
+  }
+  .contenido { position: relative; height: 100%; display: flex; align-items: center; gap: 26px; padding: 38px 40px; }
+
+  .pieza {
+    width: 208px; height: 208px; flex: none;
+    background: linear-gradient(160deg, #EBECD0 0%, #d9dcb8 100%);
+    border-radius: 26px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 22px 46px rgba(0,0,0,.6), inset 0 0 0 3px rgba(0,0,0,.14);
+    transform: rotate(-7deg);
+  }
+  .pieza svg { width: 180px; height: 180px; }
+
+  .texto { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .titulo { font-size: 62px; font-weight: 900; line-height: .92; letter-spacing: -.035em; }
+  .titulo span { display: block; }
+  .titulo .b { color: #81B64C; }
+  .raya { width: 96px; height: 7px; border-radius: 4px; background: #81B64C; }
+  /* En los listados esto se ve a la mitad, asi que el lema tiene que caber en
+     dos renglones y no en tres. */
+  .lema { font-size: 19px; line-height: 1.3; color: #D6D2CC; font-weight: 600; }
+
+  .pie {
+    position: absolute; left: 40px; right: 40px; bottom: 26px;
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 16px; font-weight: 800; letter-spacing: .01em;
+    padding: 7px 15px; border-radius: 999px;
+    background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.16);
+  }
+  .chip.verde { background: #81B64C; border-color: #81B64C; color: #14260A; }
+</style>
+</head>
+<body>
+  <div class="portada">
+    <div class="damero"></div>
+    <div class="brillo"></div>
+
+    <div class="contenido">
+      <div class="pieza" id="pieza"></div>
+      <div class="texto">
+        <h1 class="titulo"><span>AJEDREZ</span><span class="b">MAESTRO</span></h1>
+        <div class="raya"></div>
+        <p class="lema">28 rivales con carácter propio, de 250 a 2900 de Elo.</p>
+      </div>
+    </div>
+
+    <div class="pie">
+      <span class="chip verde">Online</span>
+      <span class="chip">Torneos</span>
+      <span class="chip">Análisis</span>
+      <span class="chip">Sin instalar nada</span>
+    </div>
+  </div>
+
+  <script type="module">
+    /* La pieza es la del propio juego: si algun dia cambia el dibujo, la
+       portada se regenera igual y no queda desactualizada. */
+    import { pieceSvg } from '../web/js/pieces.js';
+    document.getElementById('pieza').innerHTML = pieceSvg(2, 'clasico');
+  </script>
+</body>
+</html>
