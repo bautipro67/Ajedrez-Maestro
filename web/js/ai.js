@@ -99,8 +99,8 @@ export function createAI({ workers = 1 } = {}) {
      * Ask a bot for its move.
      * @returns {Promise<{uci, san, score, mate, depth, nodes, fromBook, bookName, thinkMs, rootMoves}>}
      */
-    botMove({ fen, botId, history = [], moveNumber = 1, seed = 1, timeBudgetMs = null }) {
-      return request('botMove', { fen, botId, history, moveNumber, seed, timeBudgetMs });
+    botMove({ fen, botId, history = [], moveNumber = 1, seed = 1, timeBudgetMs = null, elo = null }) {
+      return request('botMove', { fen, botId, history, moveNumber, seed, timeBudgetMs, elo });
     },
 
     analyze({ fen, depth = 14, timeMs = 1200, multiPv = 1 }) {

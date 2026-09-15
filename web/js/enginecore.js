@@ -24,8 +24,11 @@ function mulberry32(seed) {
   };
 }
 
-function mergedProfile(bot) {
-  const base = strengthProfile(bot.elo);
+function mergedProfile(bot, eloEnVivo = null) {
+  /* Un bot puede traer el Elo de fuera (Bauverso lo saca de GitHub): manda ese
+     si llega, porque el del fichero es solo el de reserva. */
+  const elo = Number.isFinite(eloEnVivo) ? eloEnVivo : bot.elo;
+  const base = strengthProfile(elo);
   return { ...base, ...(bot.strength || {}) };
 }
 
@@ -43,12 +46,12 @@ function humanDelay(profile, rng, { critical = false } = {}) {
 }
 
 export function handleBotMove(msg) {
-  const { fen, botId, moveNumber = 1, seed = 1, timeBudgetMs } = msg;
+  const { fen, botId, moveNumber = 1, seed = 1, timeBudgetMs, elo = null } = msg;
   const bot = botById(botId);
   if (!bot) throw new Error(`Bot desconocido: ${botId}`);
 
   const pos = C.createPosition(fen);
-  const profile = mergedProfile(bot);
+  const profile = mergedProfile(bot, Number.isFinite(elo) ? elo : null);
   const weights = mergedWeights(bot);
   const rng = mulberry32((seed ^ (moveNumber * 2654435761)) >>> 0);
 

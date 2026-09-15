@@ -511,10 +511,25 @@ a:hover { text-decoration: underline; }
 .movelist__move.is-current { background: var(--accent-dim); color: #fff; }
 .movelist__move .nag { font-weight: 800; margin-left: 3px; }
 .nag--brilliant { color: #26C2A3; }
-.nag--good { color: #81B64C; }
+.nag--great { color: #5C8BB0; }
+.nag--best { color: #81B64C; }
+.nag--excellent { color: #81B64C; }
+.nag--good { color: #95B776; }
+.nag--book { color: #A88865; }
+.nag--forced { color: var(--text-dim); }
 .nag--inaccuracy { color: #F0C040; }
 .nag--mistake { color: #E58F2A; }
 .nag--blunder { color: #CA3431; }
+
+/* Barra de precisión del informe de partida. */
+.acc-bar {
+  height: 8px; border-radius: 999px; background: var(--surface-2);
+  overflow: hidden; width: 100%;
+}
+.acc-bar__fill {
+  display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #E58F2A 0%, #F0C040 45%, #81B64C 100%);
+}
 .movelist__empty { padding: 18px; text-align: center; color: var(--text-faint); font-size: 13px; }
 
 .game-controls { display: flex; flex-wrap: wrap; gap: 6px; }

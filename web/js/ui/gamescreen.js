@@ -14,7 +14,7 @@ import { ONLINE_ERRORS } from '../online.js';
 import { uciToMove, moveToSan } from '../chess.js';
 import { createBoard } from '../board.js';
 import { createClock, TIME_CONTROLS, CATEGORY_NAMES, timeCategory, formatClock } from '../clock.js';
-import { botById, botLine } from '../bots.js';
+import { botById, botLine, eloOf } from '../bots.js';
 import { recordResult, getTournament, saveTournament } from '../storage.js';
 import { deserialize, serialize, reportResult, tournamentPlayer } from '../tournament.js';
 import { analyzeGame, achievementById } from '../achievements.js';
@@ -59,7 +59,7 @@ function botPlayer(bot) {
     kind: 'bot',
     botId: bot.id,
     name: bot.name,
-    rating: bot.elo,
+    rating: eloOf(bot),
     title: bot.title || null,
     country: bot.country,
     isBot: true,
@@ -454,6 +454,8 @@ export function mount(root, ctx, params = {}) {
         history: game.uciMoves(),
         moveNumber: game.moveNumber(),
         seed: (seedBase + ply) >>> 0,
+        /* El worker no ve el Elo en vivo que se fijo en el hilo principal. */
+        elo: eloOf(player.botId ? botById(player.botId) : bot),
         timeBudgetMs: clock ? Math.max(120, Math.min(4000, clock.getTimes()[game.turn()] / 25)) : null,
       });
     } finally {
@@ -866,14 +868,14 @@ export function mount(root, ctx, params = {}) {
           clockLeftMs: clock ? clock.getTimes()[myColor] : null,
           category,
           myElo: me.rating,
-          opponentElo: bot ? bot.elo : (onlineRival?.elo ?? 1500),
+          opponentElo: bot ? eloOf(bot) : (onlineRival?.elo ?? 1500),
           ...game.gameFacts(myColor),
         });
         record = recordResult({
           mode,
           category,
           opponent: bot
-            ? { name: bot.name, elo: bot.elo, botId: bot.id }
+            ? { name: bot.name, elo: eloOf(bot), botId: bot.id }
             : (onlineRival ? { name: onlineRival.name, elo: onlineRival.elo } : {}),
           result,
           /* La puntuacion online la lleva el servidor: recalcularla aqui

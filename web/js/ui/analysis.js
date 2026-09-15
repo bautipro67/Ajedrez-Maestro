@@ -12,7 +12,9 @@ import {
   el, card, button, spinner, evalBar, moveList, switchControl, clear, field,
 } from './components.js';
 import { createBoard } from '../board.js';
-import { classifyMove, MOVE_QUALITY_LABEL } from '../ai.js';
+import {
+  MOVE_CLASSES, classifyMove, winPercentOf, isSacrifice, buildReport, PHASE_LABEL,
+} from '../report.js';
 import { buildPgn, parsePgn } from '../pgn.js';
 import { getGame } from '../storage.js';
 import {
@@ -21,20 +23,29 @@ import {
   isEnPassant, inCheck, gameResult,
 } from '../chess.js';
 
-/** Glyph shown next to a move for each quality bucket of classifyMove(). */
-const QUALITY_GLYPH = {
-  brilliant: '!!', good: '!', inaccuracy: '?!', mistake: '?', blunder: '??',
-};
-const QUALITY_ORDER = ['brilliant', 'good', 'inaccuracy', 'mistake', 'blunder'];
+/* Las categorias, en el orden en que se enseñan en la leyenda y el informe. */
+const QUALITY_ORDER = [
+  'brilliant', 'great', 'best', 'excellent', 'good', 'book', 'forced',
+  'inaccuracy', 'mistake', 'blunder',
+];
+const QUALITY_GLYPH = Object.fromEntries(
+  Object.entries(MOVE_CLASSES).map(([k, v]) => [k, v.glyph]));
+const MOVE_QUALITY_LABEL = Object.fromEntries(
+  Object.entries(MOVE_CLASSES).map(([k, v]) => [k, v.label]));
 
 /** Live analysis settings: deep enough to be useful, quick enough to feel live. */
 const LIVE_DEPTH = 14;
 const LIVE_TIME_MS = 1500;
 const LIVE_MULTI_PV = 3;
 
-/** Full-game pass: shallower, because it runs once per ply. */
-const FULL_DEPTH = 16;
-const FULL_TIME_MS = 700;
+/* El repaso completo. Sube el tiempo por posicion —700 ms daba veredictos que
+   cambiaban de opinion en la jugada siguiente— y se reparte entre los workers
+   que haya, asi que con tres nucleos sale mas rapido que antes aun pensando
+   casi el doble en cada posicion. Pide dos lineas para poder distinguir «la
+   mejor» de «la unica», que es lo que separa una buena jugada de una genial. */
+const FULL_DEPTH = 18;
+const FULL_TIME_MS = 1100;
+const FULL_MULTI_PV = 2;
 
 const ARROW_COLORS = ['#81B64C', '#4A90D9', '#E0A030'];
 
@@ -151,6 +162,90 @@ export function mount(root, ctx, params = {}) {
     el('div', { class: 'between row--wrap gap-6', style: { marginTop: '10px' } },
       fullButton,
       fullProgress)));
+
+  /* ------------------------------ informe -------------------------------- */
+
+  /* Los nombres de la cabecera del PGN, si la partida trae una. */
+  const nombres = { white: 'Blancas', black: 'Negras' };
+
+  const reportBody = el('div', { class: 'col gap-16' });
+  const reportCard = card('Informe de la partida', reportBody);
+  reportCard.classList.add('hidden');
+  panel.appendChild(reportCard);
+
+  /** Una fila por bando: precisión grande, nivel estimado y coste medio. */
+  function ladoDelInforme(nombre, datos) {
+    if (!datos || datos.accuracy === null) return el('div');
+    const pct = datos.accuracy;
+    const barra = el('div', { class: 'acc-bar' },
+      el('span', { class: 'acc-bar__fill', style: { width: `${Math.round(pct)}%` } }));
+    return el('div', { class: 'col gap-6' },
+      el('div', { class: 'between row--wrap gap-6' },
+        el('span', { class: 'strong', text: nombre }),
+        el('span', { class: 'row gap-6' },
+          el('span', { class: 'mono strong', style: { fontSize: '19px' }, text: `${pct.toFixed(1)}%` }),
+          el('span', { class: 'tiny faint', text: 'precisión' }))),
+      barra,
+      el('div', { class: 'row row--wrap gap-6' },
+        el('span', { class: 'tiny faint', text: `nivel aproximado ${datos.rating}` }),
+        el('span', { class: 'tiny faint', text: `· ${datos.acpl} cp de coste medio` }),
+        el('span', { class: 'tiny faint', text: `· ${datos.moves} jugadas medidas` })));
+  }
+
+  function contadores(datos) {
+    const fila = el('div', { class: 'row row--wrap gap-6' });
+    for (const clase of QUALITY_ORDER) {
+      const n = (datos.classes && datos.classes[clase]) || 0;
+      if (!n) continue;
+      fila.appendChild(el('span', { class: 'row gap-4' },
+        el('span', { class: `nag nag--${clase}`, text: QUALITY_GLYPH[clase] }),
+        el('span', { class: 'tiny', text: `${n} ${MOVE_QUALITY_LABEL[clase].toLowerCase()}` })));
+    }
+    return fila;
+  }
+
+  function porFases(datos) {
+    const entradas = Object.entries(datos.phases || {}).filter(([, v]) => v !== null);
+    if (!entradas.length) return el('div');
+    const fila = el('div', { class: 'row row--wrap gap-6' });
+    for (const [fase, valor] of entradas) {
+      fila.appendChild(el('span', { class: 'tiny faint', text: `${PHASE_LABEL[fase] || fase}: ${valor.toFixed(0)}%` }));
+    }
+    return fila;
+  }
+
+  function renderReport(informe) {
+    clear(reportBody);
+    if (!informe) { reportCard.classList.add('hidden'); return; }
+    reportCard.classList.remove('hidden');
+
+    const blancas = nombres.white || 'Blancas';
+    const negras = nombres.black || 'Negras';
+    reportBody.appendChild(el('div', { class: 'col gap-16' },
+      el('div', { class: 'col gap-6' }, ladoDelInforme(blancas, informe.white), contadores(informe.white), porFases(informe.white)),
+      el('div', { class: 'col gap-6' }, ladoDelInforme(negras, informe.black), contadores(informe.black), porFases(informe.black))));
+
+    if (informe.keyMoments.length) {
+      const momentos = el('div', { class: 'col gap-6' },
+        el('span', { class: 'strong small', text: 'Momentos que decidieron' }));
+      for (const m of informe.keyMoments) {
+        const numero = Math.ceil(m.ply / 2);
+        const texto = `${numero}${m.color === 'w' ? '.' : '...'} ${m.san}`;
+        momentos.appendChild(el('button', {
+          class: 'btn btn--sm',
+          type: 'button',
+          onClick: () => goTo(m.ply),
+        },
+        el('span', { class: `nag nag--${m.clase}`, text: QUALITY_GLYPH[m.clase] }),
+        el('span', { text: ` ${texto}` }),
+        el('span', { class: 'tiny faint', text: m.bestSan ? ` — mejor ${m.bestSan}` : '' })));
+      }
+      reportBody.appendChild(momentos);
+    }
+
+    reportBody.appendChild(el('p', { class: 'tiny faint' },
+      el('span', { text: 'La precisión mide cuánta probabilidad de ganar costó cada jugada, no cuántos centipeones: perder 100 con ventaja decisiva no es lo mismo que perderlos con la partida igualada. El nivel es una orientación, no una medición.' })));
+  }
 
   /* ------------------------------- moves --------------------------------- */
 
@@ -440,14 +535,37 @@ export function mount(root, ctx, params = {}) {
     });
   }
 
-  function annotationFor(index) {
+  /** Los datos de una jugada tal y como los quiere el informe. */
+  function moveFacts(index) {
     const before = evals[index];
     const after = evals[index + 1];
-    if (!before || !after || !line[index]) return null;
-    return classifyMove(cpValue(before), -cpValue(after), {
-      wasBest: before.bestUci === line[index].uci,
-      isOnlyMove: legalCount(line[index].fenBefore) === 1,
-    });
+    const entry = line[index];
+    if (!before || !after || !entry) return null;
+    /* Las evaluaciones miran desde el bando que mueve: la de después es la del
+       rival, asi que se le da la vuelta para hablar siempre del que jugo. */
+    const winBefore = winPercentOf(before);
+    const winAfter = 100 - winPercentOf(after);
+    const secondWin = before.secondCp === null || before.secondCp === undefined
+      ? null
+      : winPercentOf({ cp: before.secondCp, mate: before.secondMate });
+    const fenAfter = fenAt(index + 1);
+    const color = String(entry.fenBefore).split(' ')[1] === 'b' ? 'b' : 'w';
+    return {
+      san: entry.san, uci: entry.uci, color,
+      fenBefore: entry.fenBefore, fenAfter,
+      legalCount: legalCount(entry.fenBefore),
+      winBefore, winAfter, secondWin,
+      bestUci: before.bestUci, bestSan: before.bestSan,
+      sacrifice: isSacrifice(entry.fenBefore, fenAfter, color),
+      inBook: false,
+      cpLoss: Math.max(0, cpValue(before) - (-cpValue(after))),
+    };
+  }
+
+  function annotationFor(index) {
+    const f = moveFacts(index);
+    if (!f) return null;
+    return classifyMove(f);
   }
 
   function refreshAnnotations() {
@@ -517,10 +635,15 @@ export function mount(root, ctx, params = {}) {
   function storeEval(index, fen, analysis) {
     const best = analysis && analysis.lines && analysis.lines[0];
     if (!best) return;
+    const second = analysis.lines[1] || null;
     evals[index] = {
       cp: typeof best.score === 'number' ? best.score : 0,
       mate: best.mate ?? null,
       bestUci: best.uci || null,
+      bestSan: best.san || null,
+      /* La segunda mejor sirve para saber si la jugada era la unica que valia. */
+      secondCp: second && typeof second.score === 'number' ? second.score : null,
+      secondMate: second ? (second.mate ?? null) : null,
       fen,
     };
   }
@@ -558,43 +681,72 @@ export function mount(root, ctx, params = {}) {
     setThinking(true);
     fullButton.lastChild.textContent = 'Detener';
 
-    for (let i = 0; i <= line.length; i++) {
-      if (run.cancelled || destroyed) break;
-      fullProgress.textContent = `analizando ${i} de ${line.length}`;
-      const fen = fenAt(i);
-      const pos = createPosition(fen);
-      if (gameResult(pos).over) continue;
-      try {
-        const analysis = await ctx.ai.analyze({ fen, depth: FULL_DEPTH, timeMs: FULL_TIME_MS, multiPv: 1 });
-        if (run.cancelled || destroyed) break;
-        storeEval(i, fen, analysis);
-        refreshAnnotations();
-      } catch {
-        if (run.cancelled || destroyed) break;
-        fullProgress.textContent = 'el motor no respondió';
-        break;
+    /* Se reparte entre todos los workers que haya. Antes iba de una en una y
+       dejaba dos nucleos parados mientras el tercero pensaba. */
+    const total = line.length + 1;
+    const hilos = Math.max(1, Math.min(4, ctx.ai.poolSize ? ctx.ai.poolSize() : 1));
+    let siguiente = 0;
+    let hechas = 0;
+
+    async function trabajador() {
+      for (;;) {
+        const i = siguiente++;
+        if (i > line.length || run.cancelled || destroyed) return;
+        const fen = fenAt(i);
+        const pos = createPosition(fen);
+        if (!gameResult(pos).over) {
+          try {
+            const analysis = await ctx.ai.analyze({
+              fen, depth: FULL_DEPTH, timeMs: FULL_TIME_MS, multiPv: FULL_MULTI_PV,
+            });
+            if (run.cancelled || destroyed) return;
+            storeEval(i, fen, analysis);
+          } catch {
+            /* Una posicion que falle no tumba el informe entero. */
+          }
+        }
+        hechas += 1;
+        if (!run.cancelled && !destroyed) {
+          fullProgress.textContent = `analizando ${hechas} de ${total}`;
+          if (hechas % hilos === 0) refreshAnnotations();
+        }
       }
     }
+
+    await Promise.all(Array.from({ length: hilos }, () => trabajador()));
 
     if (destroyed) return;
     setThinking(false);
     if (fullRun === run) {
       fullRun = null;
       fullButton.lastChild.textContent = 'Analizar toda la partida';
-      if (!run.cancelled) fullProgress.textContent = summary();
+      if (!run.cancelled) {
+        fullProgress.textContent = summary();
+        renderReport(buildReport(hechosDeLaPartida()));
+      }
       refreshAnnotations();
       scheduleAnalysis(0);
     }
   }
 
-  /** Count of each verdict, shown when the full pass finishes. */
+  /** Los datos de todas las jugadas, para el informe. */
+  function hechosDeLaPartida() {
+    const hechos = [];
+    for (let i = 0; i < line.length; i++) {
+      const f = moveFacts(i);
+      if (f) hechos.push(f);
+    }
+    return hechos;
+  }
+
+  /** Una linea corta debajo del boton; el detalle va en el informe. */
   function summary() {
-    const counts = { brilliant: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
+    const counts = {};
     for (let i = 0; i < line.length; i++) {
       const quality = annotationFor(i);
-      if (quality) counts[quality] += 1;
+      if (quality) counts[quality] = (counts[quality] || 0) + 1;
     }
-    return `${counts.blunder} errores graves · ${counts.mistake} errores · ${counts.inaccuracy} imprecisiones`;
+    return `${counts.blunder || 0} graves · ${counts.mistake || 0} errores · ${counts.inaccuracy || 0} imprecisiones`;
   }
 
   /* ------------------------------- loaders --------------------------------- */
@@ -648,6 +800,8 @@ export function mount(root, ctx, params = {}) {
   function describeHeaders(tags) {
     const white = tags.White || 'Blancas';
     const black = tags.Black || 'Negras';
+    nombres.white = white;
+    nombres.black = black;
     subtitle.textContent = `${white} — ${black}${tags.Date && tags.Date !== '????.??.??' ? ` · ${tags.Date}` : ''}`;
   }
 

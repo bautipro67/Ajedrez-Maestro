@@ -1882,7 +1882,93 @@ export const BOTS = Object.freeze([
       ],
     },
   },
+  {
+    /* El unico bot cuyo Elo no esta escrito aqui: sale de una cuenta de GitHub
+       y cambia solo. Este numero es el de reserva, el que se usa mientras la
+       red contesta o si no contesta. Ver web/js/github.js. */
+    id: 'bauverso', name: 'Bauverso', elo: 1400, title: null,
+    live: 'github',
+    country: 'AR', emoji: '🛠️', style: 'tecnico', book: 'wide',
+    avatar: { bg: '#1f6feb', fg: '#e6edf3', face: 'capucha-subida' },
+    tagline: 'Su fuerza sube cada vez que publicás algo',
+    bio: 'No tiene una puntuación fija: la saca en directo de la cuenta de GitHub de bauverso. Cada repositorio, cada estrella y cada seguidor lo hacen un poco mejor, así que la partida de hoy no es la misma que la del mes que viene. Juega como quien arregla un error: sin prisa, mirando dos veces antes de tocar.',
+    weights: { pst: 1.2, mobility: 1.2, pawnStructure: 1.1, kingSafety: 1.1, aggression: 0.9 },
+    strength: {},
+    favoriteOpenings: ['Apertura Inglesa', 'Defensa Eslava'],
+    lines: {
+      greeting: [
+        'Hola. Vengo con lo que haya compilado hoy.',
+        'Mi puntuación la saco de GitHub, así que depende de la semana que lleve.',
+        'Avisame si ves un fallo raro, que probablemente sea mío.',
+        'Empiezo. Si tardo, es que estoy leyendo el tablero dos veces.',
+      ],
+      win: [
+        'Salió a la primera. Eso no pasa casi nunca.',
+        'Anoto la partida, que esta la quiero volver a mirar.',
+        'Gané, pero hubo una jugada que no me convence del todo.',
+        'Listo. Ahora a ver si lo repito mañana.',
+      ],
+      lose: [
+        'Ahí perdí yo, no me ganaste vos. Bueno, las dos cosas.',
+        'Me la guardo para el repaso. Ese fallo se arregla.',
+        'Bien jugado. Me faltó mirar una casilla más.',
+        'Apunto el caso y sigo.',
+      ],
+      draw: [
+        'Empate limpio. No me quejo.',
+        'Los dos vimos lo mismo y ninguno se equivocó.',
+        'Queda en tablas y queda bien.',
+        'Sin ganador, pero con una posición bonita.',
+      ],
+      blunder: [
+        'Uy. Eso no era lo que tenía en la cabeza.',
+        'Ahí se me coló algo que no había mirado.',
+        'Error mío, y de los claros.',
+        'Bueno, ya está. A seguir con lo que queda.',
+      ],
+      check: [
+        'Jaque. Sin sorpresas, estaba a la vista.',
+        'Ahí tenés a tu rey, incómodo.',
+        'Jaque. Miralo con calma, que hay más de una respuesta.',
+        'Ese jaque venía preparado de tres jugadas atrás.',
+      ],
+      brilliant: [
+        'Esta me gustó. Esta la guardo.',
+        'Tardé, pero valía la pena mirar hasta el final.',
+        'Ahí estaba. Era la única y salió.',
+        'Bonita. De esas que no se encuentran todos los días.',
+      ],
+      thinking: [
+        'Dejame mirar esta línea hasta el final.',
+        'Hay dos que valen y quiero saber cuál.',
+        'Un momento, que esto tiene truco.',
+        'Estoy contando jugadas, no mirando el techo.',
+      ],
+    },
+  },
 ].map(Object.freeze));
+
+/* --------------------------- Elo en vivo --------------------------------- */
+
+/* Los bots con `live` no tienen su puntuacion escrita: llega de fuera y cambia.
+   El motor vive en un worker, que importa este modulo aparte y no ve lo que se
+   fije aqui, asi que el Elo viaja tambien en cada peticion de jugada. */
+const eloEnVivo = new Map();
+
+/** Fija el Elo en vivo de un bot. Ignora lo que no sea un numero sensato. */
+export function setLiveElo(botId, elo) {
+  const n = Math.round(Number(elo));
+  if (!botId || !Number.isFinite(n) || n < 100 || n > 3500) return false;
+  eloEnVivo.set(botId, n);
+  return true;
+}
+
+/** El Elo que hay que enseñar y usar: el de vivo si lo hay, si no el de casa. */
+export function eloOf(bot) {
+  if (!bot) return 0;
+  const vivo = eloEnVivo.get(bot.id);
+  return Number.isFinite(vivo) ? vivo : bot.elo;
+}
 
 const BY_ID = new Map(BOTS.map((bot) => [bot.id, bot]));
 

@@ -8,6 +8,8 @@ import * as storage from './storage.js';
 import * as sound from './sound.js';
 import { createAI } from './ai.js';
 import { createOnline } from './online.js';
+import { setLiveElo } from './bots.js';
+import { fetchGithubElo, cachedGithubElo } from './github.js';
 import { ratingTier } from './elo.js';
 import { userAvatarSvg } from './pieces.js';
 import { el, clear, toast, modal, confirmDialog, achievementToast } from './ui/components.js';
@@ -285,6 +287,14 @@ window.addEventListener('hashchange', render);
 window.addEventListener('error', (event) => {
   if (event.message && /ResizeObserver/.test(event.message)) return;
 });
+
+/* Bauverso no tiene puntuacion propia: la saca de GitHub. Se pone primero la
+   ultima conocida para no enseñar un numero falso mientras carga, y luego se
+   pide la de verdad. Si no hay red, se queda con la de antes. */
+setLiveElo('bauverso', cachedGithubElo());
+fetchGithubElo()
+  .then((dato) => { if (dato && dato.elo) setLiveElo('bauverso', dato.elo); })
+  .catch(() => { /* sin red, el bot juega con el Elo que ya tenia */ });
 
 renderUser();
 render();

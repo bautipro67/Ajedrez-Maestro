@@ -6,7 +6,8 @@
  */
 
 import { el, clear, button, chip, field, select, switchControl, botAvatarNode, emptyState } from './components.js';
-import { BOTS, botsByTier } from '../bots.js';
+import { BOTS, botsByTier, eloOf, setLiveElo } from '../bots.js';
+import { fetchGithubElo } from '../github.js';
 import { flagEmoji } from '../pieces.js';
 import { ratingTier, RATING_TIERS } from '../elo.js';
 import { TIME_CONTROLS, CATEGORY_NAMES, timeCategory } from '../clock.js';
@@ -78,7 +79,7 @@ export function mount(root, ctx, params = {}) {
       class: 'bot-card',
       type: 'button',
       title: bot.bio,
-      attrs: { 'aria-label': `${bot.name}, ${bot.elo} de Elo, estilo ${STYLE_LABELS[bot.style] || bot.style}` },
+      attrs: { 'aria-label': `${bot.name}, ${eloOf(bot)} de Elo, estilo ${STYLE_LABELS[bot.style] || bot.style}` },
       onClick: () => openSetup(bot),
     });
 
@@ -94,7 +95,7 @@ export function mount(root, ctx, params = {}) {
       name,
       el('div', { class: 'bot-card__elo row gap-4' },
         el('span', { text: flagEmoji(bot.country), attrs: { 'aria-hidden': 'true' } }),
-        el('span', { class: 'mono', text: String(bot.elo) }),
+        el('span', { class: 'mono', text: String(eloOf(bot)) }),
         el('span', { style: { color: tier.color }, text: tier.icon, attrs: { 'aria-hidden': 'true' } }),
         el('span', { class: 'truncate', text: STYLE_LABELS[bot.style] || bot.style })),
       el('div', { class: 'bot-card__tag truncate', text: bot.tagline }));
@@ -110,6 +111,14 @@ export function mount(root, ctx, params = {}) {
     }
     return card;
   }
+
+  /* El Elo de Bauverso puede haber cambiado desde la ultima vez: se pide al
+     entrar y se repinta si volvio distinto. */
+  let vivo = true;
+  fetchGithubElo().then((dato) => {
+    if (!vivo || !dato || !dato.elo) return;
+    if (setLiveElo('bauverso', dato.elo)) renderList();
+  }).catch(() => { /* da igual: se queda con el que hubiera */ });
 
   function renderList() {
     clear(screen);
@@ -210,7 +219,7 @@ export function mount(root, ctx, params = {}) {
           el('h1', { class: 'h2', text: bot.name + (bot.title ? ` (${bot.title})` : '') }),
           el('div', { class: 'row gap-6' },
             el('span', { text: flagEmoji(bot.country) }),
-            el('span', { class: 'mono', text: `${bot.elo}` }),
+            el('span', { class: 'mono', text: `${eloOf(bot)}` }),
             el('span', { class: 'tier-chip', style: { color: tier.color } },
               el('span', { text: tier.icon }), el('span', { text: tier.name })),
             el('span', { class: 'chip', text: STYLE_LABELS[bot.style] || bot.style })),
