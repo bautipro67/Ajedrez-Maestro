@@ -29,12 +29,12 @@ const QUALITY_ORDER = ['brilliant', 'good', 'inaccuracy', 'mistake', 'blunder'];
 
 /** Live analysis settings: deep enough to be useful, quick enough to feel live. */
 const LIVE_DEPTH = 14;
-const LIVE_TIME_MS = 900;
+const LIVE_TIME_MS = 1500;
 const LIVE_MULTI_PV = 3;
 
 /** Full-game pass: shallower, because it runs once per ply. */
-const FULL_DEPTH = 11;
-const FULL_TIME_MS = 320;
+const FULL_DEPTH = 16;
+const FULL_TIME_MS = 700;
 
 const ARROW_COLORS = ['#81B64C', '#4A90D9', '#E0A030'];
 

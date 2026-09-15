@@ -510,12 +510,17 @@ export function createSearcher(options = {}) {
   }
 
   /**
-   * Iterative deepening. `exactScores` searches every root move with a full
-   * window so each one gets an honest value (the bots need that spread to pick
-   * human-looking moves); otherwise the root uses PVS, which is faster but
-   * only trusts the best move.
+   * Iterative deepening. `exactScores` dice CUANTAS jugadas de raiz necesitan
+   * puntuacion honesta, buscadas con ventana completa: los bots las quieren
+   * todas (`true`) porque reparten con softmax sobre el conjunto, mientras que
+   * el analisis solo necesita las lineas que va a enseñar. El resto va por PVS,
+   * que es mucho mas rapido: en el mismo tiempo se ganan tres o cuatro plies,
+   * y en analisis la profundidad vale mucho mas que puntuar con exactitud una
+   * jugada que nadie va a mirar.
    */
   function runSearch(sourcePos, limits, exactScores) {
+    const exactCount = exactScores === true ? Infinity
+      : (Number.isFinite(exactScores) ? Math.max(0, exactScores) : 0);
     const started = Date.now();
     const maxDepth = prepare(sourcePos, limits);
 
@@ -575,7 +580,7 @@ export function createSearcher(options = {}) {
         currentPly = 0;
         makeMove(pos, entry.move);
         let score;
-        if (exactScores) {
+        if (i < exactCount) {
           score = -negamax(depth - 1, -INFINITE, INFINITE, 1, true);
         } else {
           const bound = iterationBest.score;
@@ -630,7 +635,10 @@ export function createSearcher(options = {}) {
       return result;
     },
     searchRoot(position, limits = {}) {
-      return runSearch(position, limits, limits.exactRootScores !== false);
+      /* Por defecto, exactas todas: es lo que necesitan los bots. El analisis
+         pasa un numero (cuantas lineas va a enseñar) y gana profundidad. */
+      const exact = limits.exactRootScores;
+      return runSearch(position, limits, exact === undefined ? true : exact);
     },
     stop,
     clearTables,

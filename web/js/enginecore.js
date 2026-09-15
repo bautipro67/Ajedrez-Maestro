@@ -98,6 +98,11 @@ export function handleBotMove(msg) {
     maxQDepth: profile.maxQDepth,
     useNullMove: profile.depth >= 4,
     useLmr: profile.depth >= 4,
+    /* Puntuar con exactitud TODAS las jugadas de raiz cuesta tres o cuatro
+       plies. Los bots flojos lo necesitan, porque reparten con softmax sobre
+       el conjunto; los fuertes tienen la temperatura tan baja que solo miran
+       las primeras, asi que ahi se cambia exactitud por profundidad. */
+    exactRootScores: profile.temperature <= 60 ? 8 : true,
   };
 
   const started = Date.now();
@@ -168,6 +173,8 @@ export function handleAnalyze(msg) {
 
   const result = searcher.searchRoot(pos, {
     depth, timeMs, weights: DEFAULT_WEIGHTS, quiescence: true,
+    /* Solo las lineas que se van a enseñar necesitan puntuacion exacta. */
+    exactRootScores: Math.max(1, multiPv),
   });
 
   const lines = (result.moves || []).slice(0, Math.max(1, multiPv)).map((entry) => ({
