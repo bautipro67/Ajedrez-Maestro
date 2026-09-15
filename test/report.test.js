@@ -57,6 +57,8 @@ test('tirar la partida se llama error grave', () => {
 
 test('la mejor jugada se reconoce, y la única que valía también', () => {
   assertEqual(classifyMove({ winBefore: 50, winAfter: 50, playedUci: 'e2e4', bestUci: 'e2e4' }), 'best');
+  assertEqual(classifyMove({ winBefore: 50, winAfter: 50, uci: 'e2e4', bestUci: 'e2e4' }), 'best',
+    'la jugada se puede llamar uci, que es como se llama en el resto del programa');
   assertEqual(classifyMove({
     winBefore: 60, winAfter: 58, playedUci: 'e2e4', bestUci: 'e2e4', secondWin: 20,
   }), 'great', 'si la segunda mejor era mucho peor, la jugada era la única');

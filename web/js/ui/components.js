@@ -4,6 +4,7 @@
  * SVG markup this project generates itself (pieces, avatars, badges).
  */
 
+import { MOVE_CLASSES } from '../report.js';
 import { pieceSvg, botAvatarSvg, userAvatarSvg, flagEmoji } from '../pieces.js';
 import { ratingTier } from '../elo.js';
 import { formatClock } from '../clock.js';
@@ -252,13 +253,14 @@ export function evalBar() {
 
 /* ------------------------------- move list ------------------------------ */
 
-const NAG_CLASS = {
-  brilliant: 'nag--brilliant', good: 'nag--good', inaccuracy: 'nag--inaccuracy',
-  mistake: 'nag--mistake', blunder: 'nag--blunder',
-};
-const NAG_GLYPH = {
-  brilliant: '!!', good: '!', inaccuracy: '?!', mistake: '?', blunder: '??',
-};
+/* Las categorias y su simbolo viven en report.js, que es quien las decide.
+   Tenerlas repetidas aqui hacia que la lista de jugadas enseñara el simbolo de
+   otra categoria —una jugada «buena» salia con «!»— y que las nuevas (la
+   mejor, excelente, de libro, forzada) no salieran de ninguna manera. */
+const NAG_CLASS = Object.fromEntries(
+  Object.keys(MOVE_CLASSES).map((k) => [k, `nag--${k}`]));
+const NAG_GLYPH = Object.fromEntries(
+  Object.entries(MOVE_CLASSES).map(([k, v]) => [k, v.glyph]));
 
 export function moveList({ onSelect } = {}) {
   const node = el('div', { class: 'movelist', attrs: { role: 'list', 'aria-label': 'Lista de jugadas' } });

@@ -552,6 +552,9 @@ export function mount(root, ctx, params = {}) {
     const color = String(entry.fenBefore).split(' ')[1] === 'b' ? 'b' : 'w';
     return {
       san: entry.san, uci: entry.uci, color,
+      /* classifyMove lee `playedUci`; sin este alias la lista de jugadas no
+         reconocia ninguna «la mejor» y el informe si, y no cuadraban. */
+      playedUci: entry.uci,
       fenBefore: entry.fenBefore, fenAfter,
       legalCount: legalCount(entry.fenBefore),
       winBefore, winAfter, secondWin,

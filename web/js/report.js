@@ -75,9 +75,13 @@ const UMBRALES = [
  */
 export function classifyMove(d = {}) {
   const {
-    winBefore = 50, winAfter = 50, playedUci = null, bestUci = null,
+    winBefore = 50, winAfter = 50, bestUci = null,
     secondWin = null, legalCount = 0, sacrifice = false, inBook = false,
   } = d;
+  /* `uci` vale igual que `playedUci`: los hechos de una jugada la llaman de la
+     primera forma en todo el resto del programa, y pedirla con otro nombre ya
+     hizo que la lista de jugadas no reconociera ni una sola «la mejor». */
+  const playedUci = d.playedUci || d.uci || null;
 
   if (legalCount === 1) return 'forced';
   if (inBook) return 'book';
