@@ -271,7 +271,9 @@ a:hover { text-decoration: underline; }
 .topbar__user { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .topbar__user svg { width: 32px; height: 32px; border-radius: 8px; }
 
-.main { flex: 1 1 auto; padding: 22px 18px 48px; }
+/* El hueco de abajo no es decorativo: garantiza que siempre haya algo que
+   scrollear y que nada quede pegado al borde inferior. */
+.main { flex: 1 1 auto; padding: 22px 18px 72px; }
 .screen { max-width: 1180px; margin: 0 auto; }
 .screen--wide { max-width: 1480px; }
 .screen__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
@@ -413,11 +415,13 @@ a:hover { text-decoration: underline; }
 .game-board-col { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: stretch; }
 .game-board-col.no-eval { grid-template-columns: minmax(0, 1fr); }
 .game-board-col > .board-stack { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-/* El tablero es cuadrado, asi que su altura la manda el ancho. En pantallas
-   anchas pero bajas (un portatil cualquiera) crecia hasta salirse por abajo y
-   habia que scrollear en plena partida para ver la primera fila. Se le pone
-   tope por la altura de la ventana; en pantallas altas no cambia nada. */
-.game-board-col > .board-stack { max-width: calc(100vh - var(--topbar-h) - 76px); }
+/* El tablero es cuadrado, asi que su altura la manda el ancho. Se le pone tope
+   por la altura de la ventana para que no se salga por abajo, pero dejando que
+   el contenido sobrepase un poco: si encajara exacto no habria nada que
+   scrollear, y dentro de un marco (itch.io) cuya parte inferior queda fuera de
+   la pantalla el panel seria inalcanzable. Sobrando, la rueda del raton
+   siempre puede llegar al final. */
+.game-board-col > .board-stack { max-width: calc(100vh - var(--topbar-h) - 40px); }
 
 .evalbar {
   position: relative;
