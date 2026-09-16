@@ -249,7 +249,7 @@ export function mount(root, ctx, params = {}) {
     const s = current();
     const body = el('div', {
       style: {
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px',
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '16px',
       },
     });
 

@@ -562,7 +562,7 @@ a:hover { text-decoration: underline; }
 
 .bot-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr));
   gap: 12px;
 }
 .bot-card {
@@ -593,7 +593,7 @@ a:hover { text-decoration: underline; }
   opacity: .95;
 }
 
-.mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 14px; }
 .mode-card {
   display: flex; flex-direction: column; gap: 7px;
   padding: 20px;
@@ -805,13 +805,53 @@ a:hover { text-decoration: underline; }
   .game-layout { grid-template-columns: minmax(0, 1fr); }
   .game-panel { position: static; }
   .movelist { max-height: 180px; }
-  .topbar__nav { display: none; }
+
+  /* El menu estaba escondido del todo en movil. Desde el telefono no habia
+     forma de llegar a Analisis ni a Perfil: no salen entre las tarjetas de la
+     portada, asi que quedaban fuera de la aplicacion salvo escribiendo la
+     direccion a mano. Ahora la barra se parte en dos lineas y los enlaces se
+     arrastran a lo ancho. */
+  .topbar {
+    height: auto;
+    min-height: var(--topbar-h);
+    flex-wrap: wrap;
+    padding: 6px 12px 2px;
+    row-gap: 2px;
+  }
+  .topbar__user { margin-left: auto; }
+  .topbar__nav {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 3px;
+    gap: 3px;
+  }
+  .topbar__nav::-webkit-scrollbar { display: none; }
+  .topbar__link { flex: none; }
 }
 
 @media (max-width: 620px) {
   :root { --topbar-h: 50px; }
   body { font-size: 14.5px; }
   .main { padding: 14px 11px 40px; }
+
+  /* Con el dedo no se acierta un boton de 34 px de alto. Las guias de iOS y de
+     Android piden 44; aqui se pone 44 para los normales y 40 para los chicos y
+     las fichas, que van en fila y son muchos. */
+  .btn { padding: 11px 16px; min-height: 44px; }
+  .btn--sm { padding: 9px 13px; font-size: 13.5px; min-height: 40px; }
+  .btn--lg { min-height: 50px; }
+  .btn--icon { width: 44px; height: 44px; padding: 10px; }
+  .chip { padding: 9px 14px; min-height: 40px; display: inline-flex; align-items: center; }
+  .topbar__link { padding: 9px 12px; min-height: 40px; display: inline-flex; align-items: center; }
+  /* El avatar es el unico camino al perfil desde el telefono. */
+  .topbar__user a, .topbar__user button { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .input, .select, .textarea { min-height: 44px; }
+  .game-controls { gap: 7px; }
   .h1 { font-size: 23px; }
   .game-board-col { grid-template-columns: 18px minmax(0, 1fr); gap: 7px; }
   .evalbar { width: 18px; }

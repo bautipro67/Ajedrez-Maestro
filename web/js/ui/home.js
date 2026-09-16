@@ -81,7 +81,7 @@ export function mount(root, ctx) {
   /* ------------------------- columnas inferiores ------------------------ */
 
   const columns = el('div', {
-    style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' },
+    style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '16px' },
   });
 
   columns.appendChild(ratingsCard(profile));
