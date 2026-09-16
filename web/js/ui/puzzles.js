@@ -67,6 +67,13 @@ function legalMapOf(fen) {
   return mapa;
 }
 
+/** «+12», «−9» o «sin cambios»: un «+0» pelado no dice nada. */
+function conSigno(delta) {
+  const n = Math.round(Number(delta) || 0);
+  if (n === 0) return 'sin cambios';
+  return (n > 0 ? '+' : '−') + Math.abs(n);
+}
+
 /** Centipeones utilizables: un mate se acota, no vale 30000. */
 function acotarCp(info) {
   if (!info) return 0;
@@ -101,6 +108,10 @@ export function mount(root, ctx, params = {}) {
      condición era siempre falsa y la respuesta del rival de un problema podía
      caer sobre el siguiente. */
   let generacion = 0;
+  /* Lo que se encontró en tus partidas. Repasarlas con el motor cuesta medio
+     minuto largo, y sin guardarlo se volvía a hacer entero cada vez que se
+     cambiaba de pestaña. */
+  let problemasPropios = null;
   const tanda = [];
 
   clear(root);
@@ -214,7 +225,7 @@ export function mount(root, ctx, params = {}) {
       el('span', { class: 'strong', text: `${s.solved} de ${s.total}` }),
       el('span', { class: 'tiny faint', text: `· ${s.accuracy} % de acierto` }),
       el('span', { class: 'tiny faint', text: s.bestStreak > 1 ? `· mejor racha ${s.bestStreak}` : '' }),
-      el('span', { class: 'tiny faint', text: `· ${s.delta >= 0 ? '+' : ''}${s.delta} de puntuación` })));
+      el('span', { class: 'tiny faint', text: `· ${conSigno(s.delta)} de puntuación` })));
   }
 
   function cargar(p) {
@@ -324,17 +335,26 @@ export function mount(root, ctx, params = {}) {
       stats.solved = (stats.solved || 0) + 1;
       stats.currentStreak = (stats.currentStreak || 0) + 1;
       stats.bestStreak = Math.max(stats.bestStreak || 0, stats.currentStreak);
-      veredicto.textContent = usoPista ? 'Resuelto, con pista.' : `¡Resuelto! ${delta >= 0 ? '+' : ''}${delta}`;
+      veredicto.textContent = usoPista
+        ? 'Resuelto, con pista: esta no puntúa.'
+        : `¡Resuelto! ${conSigno(delta)}`;
       ctx.sound?.play?.('win');
     } else {
       stats.failed = (stats.failed || 0) + 1;
       stats.currentStreak = 0;
-      const buena = problema.moves?.[0] || null;
+      const buena = problema.moves?.[solver ? solver.index() : 0] || problema.moves?.[0] || null;
+      /* El SAN hay que leerlo en la posición que hay AHORA, no en la inicial:
+         en un problema de varias jugadas ya no son la misma. */
       veredicto.textContent = buena
-        ? `La buena era ${sanOf(problema.fen, buena)}. ${delta}`
-        : `No era esa. ${delta}`;
+        ? `La buena era ${sanOf(board.getFen(), buena)}. ${conSigno(delta)}`
+        : `No era esa. ${conSigno(delta)}`;
       ctx.sound?.play?.('lose');
-      if (buena) board.drawArrow(buena.slice(0, 2), buena.slice(2, 4), 'var(--accent)');
+      if (buena) {
+        board.drawArrow(buena.slice(0, 2), buena.slice(2, 4), 'var(--accent)');
+        const resto = problema.moves.slice();
+        const desde = solver ? solver.index() : 0;
+        setTimeout(() => reproducirSolucion(resto, desde), 900);
+      }
     }
 
     try {
@@ -358,7 +378,9 @@ export function mount(root, ctx, params = {}) {
     usoPista = true;
     const esperada = solver.expected();
     if (!esperada) return;
-    board.drawArrow(esperada.slice(0, 2), esperada.slice(0, 2), 'var(--accent)', 0.3);
+    /* Una flecha de longitud cero se dibuja como un borrón. Resaltar la casilla
+       dice lo mismo y se entiende. */
+    board.setLastMove({ from: esperada.slice(0, 2), to: esperada.slice(0, 2) });
     pista.textContent = `Mueve la pieza de ${esperada.slice(0, 2)}.`;
     botonPista.disabled = true;
   }
@@ -366,10 +388,16 @@ export function mount(root, ctx, params = {}) {
   function rendirse() {
     if (!solver || resuelto || !problema?.moves?.length) return;
     const linea = solver.giveUp();
-    veredicto.textContent = `Era ${sanOf(problema.fen, linea[0])}.`;
-    board.drawArrow(linea[0].slice(0, 2), linea[0].slice(2, 4), 'var(--accent)');
-    usoPista = false;
+    const desde = solver.index();
+    const siguienteJugada = linea[desde];
+    if (siguienteJugada) {
+      board.drawArrow(siguienteJugada.slice(0, 2), siguienteJugada.slice(2, 4), 'var(--accent)');
+    }
     cerrar(false);
+    /* Y se juega lo que quedaba: enseñar solo una jugada de un mate en tres no
+       explica nada, y enseñarlo desde el principio no sería legal en la
+       posición que hay ahora en el tablero. */
+    setTimeout(() => reproducirSolucion(linea, desde), 700);
   }
 
   function siguiente() {
@@ -400,10 +428,30 @@ export function mount(root, ctx, params = {}) {
     prepararPropias();
   }
 
+  /** Cuántas jugadas tuyas quedan por acertar, para el texto de la línea. */
+  function reproducirSolucion(linea, desde = 0) {
+    let i = desde;
+    const paso = () => {
+      if (destroyed || i >= linea.length) return;
+      aplicar(linea[i]);
+      i += 1;
+      setTimeout(paso, 520);
+    };
+    paso();
+  }
+
   async function prepararPropias() {
     const mia = ++generacion;
     avisoCard.classList.remove('hidden');
     clear(aviso);
+    /* Ya repasadas en esta visita: no se vuelve a esperar medio minuto. */
+    if (problemasPropios) {
+      aviso.appendChild(el('p', { class: 'small muted', text: problemasPropios.length
+        ? `${problemasPropios.length} posiciones donde te equivocaste. Cada una tiene una jugada mejor.`
+        : 'No encontré errores gordos en tus partidas guardadas.' }));
+      if (problemasPropios.length) { pool = problemasPropios; siguiente(); }
+      return;
+    }
     const partidas = loadGames(12)
       .filter((g) => typeof g.pgn === 'string' && g.pgn.length > 20)
       .filter((g) => g.myColor === 'w' || g.myColor === 'b');
@@ -432,11 +480,13 @@ export function mount(root, ctx, params = {}) {
 
     clear(aviso);
     if (!encontrados.length) {
+      problemasPropios = [];
       aviso.appendChild(emptyState(
         'No encontré errores gordos en tus partidas guardadas: ninguna jugada tiró la partida. Jugá alguna más y vuelvo a mirar.'));
       return;
     }
     aviso.appendChild(el('p', { class: 'small muted', text: `${encontrados.length} posiciones donde te equivocaste. Cada una tiene una jugada mejor.` }));
+    problemasPropios = encontrados;
     pool = encontrados;
     siguiente();
   }

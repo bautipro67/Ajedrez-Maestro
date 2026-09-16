@@ -118,6 +118,9 @@ export function createSolver(puzzle) {
     failed: () => fallado,
     /** Cuántas jugadas tuyas quedan. */
     remaining: () => Math.ceil(Math.max(0, linea.length - indice) / 2),
+    /** Por dónde va la línea: hace falta para enseñarla desde donde se falló y
+        no desde el principio, que en el tablero de ahora ya no es legal. */
+    index: () => indice,
 
     tryMove(uci) {
       if (acabado) return { ok: false, solved: true, reply: null, failed: fallado };
