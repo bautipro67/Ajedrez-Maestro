@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Promo vertical</title>
+<link rel="stylesheet" href="promo-comun.css">
+<style>
+  /*
+   * Guion VERTICAL, 540×960 (se captura al doble: 1080×1920). Para YouTube
+   * Shorts, TikTok y Reels.
+   *
+   * Las tres plataformas dibujan su propia interfaz ENCIMA del vídeo y hay que
+   * esquivarla o el texto queda debajo de un botón:
+   *   - la columna de botones de TikTok ocupa el 15 % de la derecha de la mitad
+   *     de abajo → nada importante pasa de x=456
+   *   - el pie de foto y el nombre de la cuenta ocupan el 20 % de abajo
+   *     → nada importante por debajo de y=770
+   * Así que el contenido vive en una caja de 420×680 pegada a la izquierda, y
+   * lo que sobresale es decorado.
+   *
+   * Lo otro que cambia respecto al apaisado: esto se ve SIN SONIDO y en tres
+   * segundos se decide si alguien sigue mirando. Por eso empieza con un mate en
+   * dos y no con el logotipo.
+   */
+  .cuadro { width: 540px; height: 960px; }
+
+  .brillo { width: 460px; height: 460px; right: -150px; top: -150px; }
+
+  /* La marca, pequeña y siempre arriba a la izquierda. */
+  .marca { position: absolute; left: 36px; top: 34px; display: flex; align-items: center; gap: 10px; }
+  .marca .ficha {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: linear-gradient(160deg,#EBECD0 0%,#d9dcb8 100%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .marca .ficha svg { width: 28px; height: 28px; }
+  .marca .texto { font-size: 15px; font-weight: 900; letter-spacing: .02em; line-height: 1.05; }
+
+  .bloque { position: absolute; left: 36px; width: 420px; }
+
+  .titular { font-size: 43px; font-weight: 900; letter-spacing: -.035em; line-height: .96; }
+  .bajada { font-size: 19px; font-weight: 600; color: #B6B1A9; margin-top: 12px; }
+
+  .cuenta {
+    position: absolute; left: 36px; width: 420px; text-align: center;
+    font-size: 84px; font-weight: 900; letter-spacing: -.04em; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .jugadaGrande {
+    font-size: 40px; font-weight: 900; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nag { font-size: 19px; gap: 11px; }
+  .nag i { width: 26px; height: 26px; font-size: 16px; line-height: 26px; }
+  .accfila { font-size: 19px; gap: 12px; }
+  .accfila .quien { width: 150px; }
+  .accbar { height: 11px; }
+  .accfila .pct { width: 62px; }
+
+  .barraeval { width: 18px; }
+
+  .rival .nombre { font-size: 19px; }
+  .rival .elo { font-size: 16px; }
+  .rival .frase { font-size: 15px; }
+  .rival .titulillo { font-size: 12px; }
+
+  .modo { width: 420px; padding: 18px 20px; gap: 15px; }
+  .modo .icono { width: 52px; height: 52px; font-size: 26px; }
+  .modo h3 { font-size: 20px; margin-bottom: 5px; }
+  .modo p { font-size: 15px; line-height: 1.35; }
+
+  .chip { font-size: 17px; padding: 9px 17px; }
+  .mate { font-size: 30px; padding: 13px 28px; border-radius: 14px; }
+
+  .avance { height: 6px; }
+</style>
+</head>
+<body>
+<div id="hoja"></div>
+
+<script type="module">
+import {
+  montar, tramo, frena, salta, tope, px, enCuadros,
+  OPERA, partidaHasta, calendarioDePlys, plyEnFotograma, dibujarTablero,
+  RIVALES, tarjetaRival, COMENTARIOS, MODOS, DIRECCION, logotipo,
+} from './promo-comun.js';
+import { pieceSvg } from '../web/js/pieces.js';
+
+/* El tablero manda en todas las escenas que lo tienen. */
+const TABLERO = 420;
+const TABLERO_Y = 236;
+/* Nada importante por debajo de esto: ahi empieza la interfaz de TikTok. */
+const SUELO = 770;
+
+/** La marca chiquita de arriba, que no se mueve en todo el vídeo. */
+function marca() {
+  return `<div class="marca">
+    <div class="ficha">${pieceSvg(2, 'clasico')}</div>
+    <div class="texto">AJEDREZ<br><span class="verde">MAESTRO</span></div>
+  </div>`;
+}
+
+/* ================================ gancho =============================== */
+
+/*
+ * La posición justo antes de 16.Dxb8+: blancas dan mate en dos entregando la
+ * dama. Es la jugada más famosa de la partida de la Ópera y funciona como
+ * gancho porque quien sabe jugar quiere contestar y quien no, quiere ver cómo
+ * acaba. El reloj de tres segundos es lo que hace que no pasen de largo.
+ */
+const PLY_GANCHO = 30;
+
+function escenaGancho(local) {
+  const estado = partidaHasta(PLY_GANCHO);
+  const entrada = frena(tramo(local, 0, 5));
+  /* 3, 2, 1: un número por cada doce doceavos. */
+  const quedan = Math.max(1, 3 - Math.floor(tramo(local, 4, 36) * 3.999));
+  const pulso = 1 - 0.12 * Math.cos(tope((local - enCuadros(4)) / enCuadros(12) % 1) * Math.PI * 2);
+
+  return `<div class="capa" style="opacity:${entrada.toFixed(3)}">
+    ${marca()}
+    <div class="bloque" style="top:104px">
+      <div class="titular">¿Ves el <span class="verde">mate en 2</span>?</div>
+      <div class="bajada">Juegan las blancas. Morphy lo vio en 1858.</div>
+    </div>
+    ${dibujarTablero(estado, TABLERO, { x: 36, y: TABLERO_Y,
+      extra: `transform:scale(${(0.96 + 0.04 * entrada).toFixed(3)})` })}
+    <div class="cuenta verde" style="top:672px;opacity:${frena(tramo(local, 4, 4)).toFixed(3)};
+         transform:scale(${pulso.toFixed(3)})">${quedan}</div>
+  </div>`;
+}
+
+/* ================================ remate =============================== */
+
+/* Las tres medias jugadas del final, cada una con su respiro. */
+const REMATE = [
+  { ply: 31, texto: '16. Qb8+', nota: 'La dama, regalada.', color: '#3FDCBB' },
+  { ply: 32, texto: '16... Nxb8', nota: 'No hay otra: es obligada.', color: '#B6B1A9' },
+  { ply: 33, texto: '17. Rd8#', nota: 'Mate con la torre.', color: '#81B64C' },
+];
+
+function pasoDelRemate(local, cuadros) {
+  const paso = cuadros / REMATE.length;
+  return Math.min(REMATE.length - 1, Math.floor(local / paso));
+}
+
+function escenaRemate(local, e) {
+  const i = pasoDelRemate(local, e.cuadros);
+  const jugada = REMATE[i];
+  const estado = partidaHasta(jugada.ply);
+  const dentro = local - (e.cuadros / REMATE.length) * i;
+  const aparece = frena(tope(dentro / enCuadros(4)));
+  const esMate = jugada.ply === OPERA.length;
+
+  return `<div class="capa">
+    ${marca()}
+    <div class="bloque" style="top:110px">
+      <div class="jugadaGrande" style="color:${jugada.color};opacity:${aparece.toFixed(3)};
+           transform:translateY(${px((1 - aparece) * 14)})">${jugada.texto}</div>
+      <div class="bajada" style="margin-top:8px;opacity:${frena(tope(dentro / enCuadros(7))).toFixed(3)}">${jugada.nota}</div>
+    </div>
+    ${dibujarTablero(estado, TABLERO, { x: 36, y: TABLERO_Y })}
+    ${esMate ? `<div class="mate" style="left:36px;width:420px;text-align:center;top:676px;
+         opacity:${frena(tope(dentro / enCuadros(3)) * 1.6).toFixed(3)};
+         transform:scale(${(0.72 + 0.28 * salta(tope(dentro / enCuadros(6)))).toFixed(3)})">Jaque mate</div>` : ''}
+  </div>`;
+}
+
+function sonidosRemate(e) {
+  const paso = e.cuadros / REMATE.length;
+  const lista = [];
+  REMATE.forEach((jugada, i) => {
+    const estado = partidaHasta(jugada.ply);
+    lista.push({ cuadro: paso * i, sonido: estado.sonido });
+    if (estado.enJaque) lista.push({ cuadro: paso * i + enCuadros(1), sonido: 'check' });
+  });
+  lista.push({ cuadro: paso * (REMATE.length - 1) + enCuadros(4), sonido: 'win' });
+  return lista;
+}
+
+/* ================================ marca ================================ */
+
+function escenaMarca(local) {
+  const t = tramo(local, 0, 12);
+  return `<div class="capa" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px">
+    ${logotipo(t, { pieza: 132, titulo: 54, hueco: 24, raya: 84 })}
+    <div class="bloque" style="position:static;text-align:center;opacity:${frena(tramo(local, 8, 9)).toFixed(3)}">
+      <div class="lema" style="font-size:23px">Motor propio, escrito a mano.</div>
+      <div class="bajada" style="margin-top:8px">Sin librerías, sin cuentas, sin instalar nada.</div>
+    </div>
+  </div>`;
+}
+
+/* =============================== rivales =============================== */
+
+function escenaRivales(local) {
+  const entrada = frena(tramo(local, 0, 7));
+  const alto = 118 + 14;
+  const lista = RIVALES.concat(RIVALES);
+  /* Sube en doceavos, para que a 24 fps vaya igual de rápido. */
+  const avance = (local / enCuadros(1)) * 3.1;
+  const vuelta = alto * RIVALES.length;
+
+  return `<div class="capa" style="opacity:${entrada.toFixed(3)}">
+    ${marca()}
+    <div class="bloque" style="top:104px">
+      <div class="titular">28 rivales.<br><span class="verde">Ninguno juega igual.</span></div>
+      <div class="bajada">De 250 a 2900 de Elo, con manías propias.</div>
+    </div>
+    <div style="position:absolute;left:36px;top:236px;width:420px;height:${px(SUELO - 236)};overflow:hidden;
+                -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 11%,#000 89%,transparent 100%)">
+      <div style="transform:translateY(${px(-(avance % vuelta))})">
+        ${lista.map((b) => tarjetaRival(b, { avatar: 50, extra: `height:${px(alto - 14)};margin-bottom:14px;` })).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* =============================== análisis ============================== */
+
+function escenaAnalisis(local) {
+  const entrada = frena(tramo(local, 0, 7));
+  const estado = partidaHasta(OPERA.length);
+  const alturaBlancas = 50 + 50 * frena(tramo(local, 3, 12));
+  const ladoChico = 300;
+
+  return `<div class="capa" style="opacity:${entrada.toFixed(3)}">
+    ${marca()}
+    <div class="bloque" style="top:104px">
+      <div class="titular">Y te explica<br><span class="verde">qué pasó</span>.</div>
+    </div>
+    <div class="barraeval" style="left:36px;top:230px;height:${px(ladoChico)}">
+      <div class="blancas" style="height:${alturaBlancas.toFixed(2)}%"></div>
+    </div>
+    ${dibujarTablero(estado, ladoChico, { x: 66, y: 230 })}
+    <div class="bloque" style="top:556px;display:flex;flex-direction:column;gap:22px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        ${COMENTARIOS.map((c, i) => {
+          const o = frena(tramo(local, 5 + i * 3, 7));
+          return `<div class="nag" style="opacity:${o.toFixed(3)};transform:translateX(${px((1 - o) * 20)})">
+            <i style="background:${c.color}">${c.letra}</i>
+            <span style="width:132px;font-variant-numeric:tabular-nums">${c.san}</span>
+            <span style="color:${c.color}">${c.clase}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:9px;opacity:${frena(tramo(local, 19, 8)).toFixed(3)}">
+        <div class="accfila">
+          <span class="quien">Tú</span>
+          <span class="accbar"><i style="width:${(94 * frena(tramo(local, 20, 9))).toFixed(1)}%"></i></span>
+          <span class="pct">94%</span>
+        </div>
+        <div class="accfila">
+          <span class="quien">Amalia Reyes</span>
+          <span class="accbar"><i style="width:${(61 * frena(tramo(local, 22, 9))).toFixed(1)}%;background:#8B867E"></i></span>
+          <span class="pct">61%</span>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================================ modos ================================ */
+
+function escenaModos(local) {
+  const tarjetas = MODOS.map((m, i) => {
+    const t = frena(tramo(local, 3 + i * 4, 10));
+    return `<div class="modo" style="left:36px;top:${px(250 + i * 128)};opacity:${t.toFixed(3)};
+                 transform:translateX(${px((1 - t) * 26)})">
+      <div class="icono">${m.icono}</div>
+      <div><h3>${m.titulo}</h3><p>${m.texto}</p></div>
+    </div>`;
+  }).join('');
+
+  return `<div class="capa">
+    ${marca()}
+    <div class="bloque" style="top:104px;opacity:${frena(tramo(local, 0, 7)).toFixed(3)}">
+      <div class="titular">No es solo<br><span class="verde">una partida</span>.</div>
+    </div>
+    ${tarjetas}
+  </div>`;
+}
+
+/* ================================ cierre =============================== */
+
+function escenaCierre(local) {
+  const chips = ['Gratis', 'Sin instalar', 'Sin cuenta'];
+  return `<div class="capa" style="display:flex;flex-direction:column;align-items:center;
+               justify-content:center;gap:34px;padding-bottom:64px">
+    ${logotipo(tramo(local, 0, 11), { pieza: 138, titulo: 56, hueco: 26, raya: 88 })}
+    <div style="text-align:center;opacity:${frena(tramo(local, 8, 9)).toFixed(3)}">
+      <div class="lema" style="font-size:23px">Se abre en el navegador<br>y ya estás jugando.</div>
+      <div class="verde" style="font-size:25px;font-weight:900;letter-spacing:-.015em;margin-top:15px">${DIRECCION}</div>
+    </div>
+    <div style="display:flex;gap:9px;flex-wrap:wrap;justify-content:center;width:430px;
+                opacity:${frena(tramo(local, 12, 9)).toFixed(3)}">
+      ${chips.map((c, i) => `<span class="chip${i === 0 ? ' lleno' : ''}">${c}</span>`).join('')}
+    </div>
+  </div>`;
+}
+
+montar([
+  { nombre: 'gancho', dura: 40, pinta: escenaGancho,
+    sonidos: () => [16, 28].map((u) => ({ cuadro: enCuadros(u), sonido: 'lowTime', ganancia: 0.8 })) },
+  { nombre: 'remate', dura: 54, pinta: escenaRemate, sonidos: sonidosRemate },
+  { nombre: 'marca', dura: 28, pinta: escenaMarca,
+    sonidos: () => [{ cuadro: enCuadros(1), sonido: 'notify' }] },
+  { nombre: 'rivales', dura: 46, pinta: escenaRivales,
+    sonidos: () => [0, 12, 24, 36].map((u) => ({ cuadro: enCuadros(u), sonido: 'click', ganancia: 0.5 })) },
+  { nombre: 'analisis', dura: 44, pinta: escenaAnalisis,
+    sonidos: () => COMENTARIOS.map((_, i) => ({ cuadro: enCuadros(5 + i * 3), sonido: 'click', ganancia: 0.7 })) },
+  { nombre: 'modos', dura: 42, pinta: escenaModos,
+    sonidos: () => MODOS.map((_, i) => ({ cuadro: enCuadros(3 + i * 4), sonido: 'click', ganancia: 0.7 })) },
+  { nombre: 'cierre', dura: 34, pinta: escenaCierre,
+    sonidos: () => [{ cuadro: enCuadros(1), sonido: 'gameStart' }] },
+]);
+</script>
+</body>
+</html>
