@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Promo</title>
+<style>
+  /*
+   * Guion del vídeo promocional. Cada fotograma se dibuja a partir de su
+   * NÚMERO, nunca del reloj: la misma `f` da siempre exactamente la misma
+   * imagen, así que se puede capturar con un navegador sin cabeza sin que
+   * importe cuánto tarde en cargar. `?desde=N&cuantos=M` apila M fotogramas
+   * uno debajo de otro para sacarlos de una sola captura.
+   */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+  .cuadro {
+    position: relative;
+    width: 960px; height: 540px;
+    overflow: hidden;
+    background: radial-gradient(120% 95% at 76% 8%, #2c2a26 0%, #171613 56%, #0e0e0d 100%);
+    color: #ECEAE7;
+  }
+
+  /* Damero de fondo, apenas insinuado, igual que en la portada. */
+  .damero {
+    position: absolute; inset: -140px -140px auto -140px; height: 900px;
+    transform: rotate(-12deg);
+    opacity: .05;
+    background-image:
+      linear-gradient(45deg, #81B64C 25%, transparent 25%, transparent 75%, #81B64C 75%),
+      linear-gradient(45deg, #81B64C 25%, transparent 25%, transparent 75%, #81B64C 75%);
+    background-size: 168px 168px;
+    background-position: 0 0, 84px 84px;
+    -webkit-mask-image: radial-gradient(120% 95% at 76% 8%, #000 0%, rgba(0,0,0,.25) 70%, transparent 100%);
+  }
+  .brillo {
+    position: absolute; width: 560px; height: 560px; right: -170px; top: -200px;
+    background: radial-gradient(circle, rgba(129,182,76,.26) 0%, transparent 68%);
+  }
+  .vineta { position: absolute; inset: 0; background: radial-gradient(130% 100% at 50% 50%, transparent 52%, rgba(0,0,0,.55) 100%); }
+
+  /* Barra de avance del propio vídeo, abajo del todo. */
+  .avance { position: absolute; left: 0; bottom: 0; height: 4px; background: #81B64C; }
+
+  .capa { position: absolute; inset: 0; }
+
+  /* ---------------- tipografía ---------------- */
+  .titulo { font-weight: 900; letter-spacing: -.035em; line-height: .92; }
+  .verde { color: #81B64C; }
+  .lema { color: #D6D2CC; font-weight: 600; }
+  .apagado { color: #A8A39B; }
+
+  /* ---------------- tablero ---------------- */
+  .tablero { position: relative; border-radius: 10px; overflow: hidden; box-shadow: 0 26px 54px rgba(0,0,0,.62); }
+  .casilla { position: absolute; }
+  .casilla.clara { background: #EBECD0; }
+  .casilla.oscura { background: #739552; }
+  .casilla.ultima { background: #CBD26B; }
+  .casilla.ultima.oscura { background: #A9B457; }
+  .casilla.jaque { background: #D06A5A; }
+  .pieza { position: absolute; }
+  .pieza svg { width: 100%; height: 100%; display: block; }
+
+  /* ---------------- tarjetas de rival ---------------- */
+  /* El carril esta quieto y recorta; la fila de dentro es la que se mueve. */
+  .carril {
+    position: absolute; left: 0; right: 0; height: 158px; overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
+  }
+  .fila { display: flex; gap: 16px; }
+  .rival {
+    width: 236px; flex: none;
+    background: rgba(255,255,255,.055);
+    border: 1.5px solid rgba(255,255,255,.12);
+    border-radius: 16px;
+    padding: 16px 16px 14px;
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .rival .cabecera { display: flex; align-items: center; gap: 11px; }
+  .rival .cabecera svg { border-radius: 11px; flex: none; }
+  .rival .nombre { font-size: 17px; font-weight: 800; line-height: 1.1; }
+  .rival .elo { font-size: 14px; font-weight: 800; color: #81B64C; }
+  .rival .frase { font-size: 13.5px; line-height: 1.32; color: #B6B1A9; min-height: 36px; }
+  .rival .titulillo {
+    font-size: 11px; font-weight: 900; letter-spacing: .06em;
+    background: #81B64C; color: #14260A; border-radius: 5px; padding: 2px 6px;
+  }
+
+  /* ---------------- panel lateral de la partida ---------------- */
+  .panel {
+    position: absolute;
+    background: rgba(255,255,255,.05);
+    border: 1.5px solid rgba(255,255,255,.11);
+    border-radius: 16px;
+  }
+  .jugador { display: flex; align-items: center; gap: 11px; padding: 12px 14px; }
+  .jugador svg { border-radius: 10px; flex: none; }
+  .jugador .quien { font-size: 16px; font-weight: 800; }
+  .jugador .sub { font-size: 12.5px; color: #A8A39B; font-weight: 700; }
+  .reloj {
+    margin-left: auto; font-variant-numeric: tabular-nums;
+    font-size: 21px; font-weight: 800; letter-spacing: .01em;
+    background: rgba(0,0,0,.34); border-radius: 9px; padding: 5px 11px;
+  }
+  .reloj.activo { background: #EBECD0; color: #1c1b18; }
+
+  .jugadas { padding: 6px 8px 10px; display: grid; grid-template-columns: 34px 1fr 1fr; gap: 2px 4px; align-content: start; }
+  .jugadas .num { font-size: 13.5px; color: #8B867E; text-align: right; padding: 4px 4px; font-weight: 700; }
+  .jugadas .san { font-size: 15px; font-weight: 700; padding: 4px 7px; border-radius: 6px; }
+  .jugadas .san.actual { background: rgba(129,182,76,.26); color: #DFF2C6; }
+
+  /* ---------------- análisis ---------------- */
+  .barraeval { position: absolute; width: 20px; border-radius: 6px; overflow: hidden; background: #2b2926; }
+  .barraeval .blancas { position: absolute; left: 0; right: 0; bottom: 0; background: #EBECD0; }
+  .nag { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 800; }
+  .nag i { width: 20px; height: 20px; border-radius: 6px; display: inline-block; font-style: normal; font-size: 13px; text-align: center; line-height: 20px; color: #14260A; font-weight: 900; }
+  .precision { display: flex; flex-direction: column; gap: 7px; }
+  .accfila { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 700; }
+  .accfila .quien { width: 118px; }
+  .accbar { flex: 1; height: 9px; border-radius: 5px; background: rgba(255,255,255,.1); overflow: hidden; }
+  .accbar i { display: block; height: 100%; border-radius: 5px; background: #81B64C; }
+  .accfila .pct { width: 52px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 900; }
+
+  /* ---------------- modos ---------------- */
+  .modo {
+    position: absolute; width: 396px; height: 150px;
+    background: rgba(255,255,255,.055);
+    border: 1.5px solid rgba(255,255,255,.12);
+    border-radius: 18px;
+    padding: 20px 22px;
+    display: flex; gap: 16px;
+  }
+  .modo .icono {
+    width: 56px; height: 56px; flex: none; border-radius: 15px;
+    background: rgba(129,182,76,.17); border: 1.5px solid rgba(129,182,76,.42);
+    display: flex; align-items: center; justify-content: center; font-size: 28px;
+  }
+  .modo h3 { font-size: 20px; font-weight: 900; letter-spacing: -.01em; margin-bottom: 7px; }
+  .modo p { font-size: 14.5px; line-height: 1.38; color: #B6B1A9; }
+
+  .chip {
+    font-size: 16px; font-weight: 800;
+    padding: 8px 16px; border-radius: 999px;
+    background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.16);
+  }
+  .chip.lleno { background: #81B64C; border-color: #81B64C; color: #14260A; }
+
+  /* Cartel de jaque mate sobre el tablero, al final de la partida. */
+  .mate {
+    position: absolute;
+    background: #81B64C; color: #14260A;
+    font-size: 23px; font-weight: 900; letter-spacing: -.01em;
+    padding: 10px 24px; border-radius: 12px;
+    box-shadow: 0 16px 36px rgba(0,0,0,.55);
+  }
+</style>
+</head>
+<body>
+<div id="hoja"></div>
+
+<script type="module">
+import {
+  createPosition, sanToMove, makeMove, moveFrom, moveTo, inCheck
+} from '../web/js/chess.js';
+import { pieceSvg, botAvatarSvg, userAvatarSvg } from '../web/js/pieces.js';
+import { botById } from '../web/js/bots.js';
+
+/* ==================================================================== *
+ * Guion
+ * ==================================================================== */
+
+const FPS = 12;
+
+/* Cada escena dice cuántos fotogramas dura; los límites salen solos. */
+const ESCENAS = [
+  { nombre: 'apertura', dura: 26, pinta: escenaApertura },
+  { nombre: 'rivales',  dura: 44, pinta: escenaRivales },
+  { nombre: 'partida',  dura: 78, pinta: escenaPartida },
+  { nombre: 'analisis', dura: 32, pinta: escenaAnalisis },
+  { nombre: 'modos',    dura: 34, pinta: escenaModos },
+  { nombre: 'cierre',   dura: 30, pinta: escenaCierre },
+];
+
+let acumulado = 0;
+for (const e of ESCENAS) { e.desde = acumulado; acumulado += e.dura; }
+const TOTAL = acumulado;
+
+/* ==================================================================== *
+ * Utilidades de animación
+ * ==================================================================== */
+
+const tope = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+/** Arranca rápido y frena: lo que hace que algo parezca que "llega". */
+const frena = (t) => 1 - Math.pow(1 - tope(t), 3);
+/** Entra frenando y sale acelerando. */
+const suave = (t) => (tope(t) < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+/** Progreso dentro de un tramo de fotogramas, en 0..1. */
+const tramo = (f, desde, dura) => tope((f - desde) / Math.max(1, dura));
+/** Aparece, se queda y se va. */
+function entraysale(f, desde, dura, fundido = 6) {
+  const e = tramo(f, desde, fundido);
+  const s = 1 - tramo(f, desde + dura - fundido, fundido);
+  return Math.min(frena(e), frena(s));
+}
+
+function px(n) { return Math.round(n * 100) / 100 + 'px'; }
+
+/* ==================================================================== *
+ * La partida que se ve: Morphy - duque de Brunswick y conde Isouard,
+ * Ópera de París, 1858. Es de dominio público y termina en mate con la
+ * dama entregada, que es justo lo que se quiere enseñar.
+ * ==================================================================== */
+
+const OPERA = ('e4 e5 Nf3 d6 d4 Bg4 dxe5 Bxf3 Qxf3 dxe5 Bc4 Nf6 Qb3 Qe7 Nc3 c6 '
+  + 'Bg5 b5 Nxb5 cxb5 Bxb5+ Nbd7 O-O-O Rd8 Rxd7 Rxd7 Rd1 Qe6 Bxd7+ Nxd7 Qb8+ Nxb8 Rd8#').split(' ');
+
+/* Evaluación aproximada tras cada media jugada, en centipeones y desde el
+   punto de vista de las blancas. Son los números que se dibujan en la barra;
+   el juego los calcula de verdad, aquí van fijos para que el fotograma no
+   dependa de cuánto piense el motor. */
+const EVAL_OPERA = [
+  20, 15, 25, 30, 35, 40, 45, 55, 60, 65, 70, 75, 95, 100, 110, 175,
+  190, 320, 340, 360, 420, 430, 470, 480, 620, 650, 780, 800, 1200, 1400,
+  32000, 32000, 32000,
+];
+
+/** Rehace la partida hasta la media jugada `ply` y devuelve todo lo pintable. */
+function partidaHasta(ply) {
+  const pos = createPosition();
+  const sanes = [];
+  let ultima = null;
+  for (let i = 0; i < ply && i < OPERA.length; i += 1) {
+    const mv = sanToMove(pos, OPERA[i]);
+    if (mv <= 0) break;
+    ultima = { desde: moveFrom(mv), hasta: moveTo(mv) };
+    makeMove(pos, mv);
+    sanes.push(OPERA[i]);
+  }
+  return { pos, sanes, ultima, jaque: inCheck(pos) ? pos.kingSq[pos.turn] : -1 };
+}
+
+/* Cuántos fotogramas dura cada media jugada: el final va más despacio para
+   que se vea la entrega de dama, que es el momento bueno. */
+function calendarioDePlys(total) {
+  const n = OPERA.length;
+  const pesos = OPERA.map((_, i) => (i >= n - 5 ? 3.4 : i >= n - 10 ? 1.9 : 1));
+  const suma = pesos.reduce((a, b) => a + b, 0);
+  let llevado = 0;
+  return pesos.map((p) => {
+    const desde = llevado;
+    llevado += (p / suma) * total;
+    return { desde, hasta: llevado };
+  });
+}
+
+function plyEnFotograma(local, dura) {
+  const cal = calendarioDePlys(dura);
+  for (let i = cal.length - 1; i >= 0; i -= 1) if (local >= cal[i].desde) return i + 1;
+  return 0;
+}
+
+/* ==================================================================== *
+ * Tablero
+ * ==================================================================== */
+
+function dibujarTablero(estado, lado, opts = {}) {
+  const c = lado / 8;
+  const trozos = [];
+  for (let fila = 7; fila >= 0; fila -= 1) {
+    for (let col = 0; col < 8; col += 1) {
+      const sq = (fila << 4) | col;
+      const x = col * c;
+      const y = (7 - fila) * c;
+      const oscura = (fila + col) % 2 === 0;
+      const clases = ['casilla', oscura ? 'oscura' : 'clara'];
+      if (estado.ultima && (sq === estado.ultima.desde || sq === estado.ultima.hasta)) clases.push('ultima');
+      if (sq === estado.jaque) clases.push('jaque');
+      trozos.push(`<div class="${clases.join(' ')}" style="left:${px(x)};top:${px(y)};width:${px(c)};height:${px(c)}"></div>`);
+    }
+  }
+  for (let fila = 7; fila >= 0; fila -= 1) {
+    for (let col = 0; col < 8; col += 1) {
+      const sq = (fila << 4) | col;
+      const pc = estado.pos.board[sq];
+      if (!pc) continue;
+      const x = col * c;
+      const y = (7 - fila) * c;
+      trozos.push(`<div class="pieza" style="left:${px(x)};top:${px(y)};width:${px(c)};height:${px(c)}">${pieceSvg(pc, 'clasico')}</div>`);
+    }
+  }
+  const estilo = `left:${px(opts.x || 0)};top:${px(opts.y || 0)};width:${px(lado)};height:${px(lado)};`
+    + (opts.extra || '');
+  return `<div class="tablero" style="${estilo}">${trozos.join('')}</div>`;
+}
+
+/* ==================================================================== *
+ * Escenas
+ * ==================================================================== */
+
+function logotipo(t, opts = {}) {
+  const escala = 0.86 + 0.14 * frena(t);
+  const dx = (1 - frena(tope(t * 1.25))) * 46;
+  const tamPieza = opts.pieza || 188;
+  const tamTitulo = opts.titulo || 76;
+  return `
+    <div class="capa" style="display:flex;align-items:center;justify-content:center;gap:34px;opacity:${frena(t * 1.4).toFixed(3)}">
+      <div style="width:${px(tamPieza)};height:${px(tamPieza)};border-radius:26px;flex:none;
+                  background:linear-gradient(160deg,#EBECD0 0%,#d9dcb8 100%);
+                  box-shadow:0 22px 46px rgba(0,0,0,.6), inset 0 0 0 3px rgba(0,0,0,.14);
+                  display:flex;align-items:center;justify-content:center;
+                  transform:rotate(-7deg) scale(${escala.toFixed(3)}) translateX(${px(-dx)})">
+        <div style="width:${px(tamPieza * 0.86)};height:${px(tamPieza * 0.86)}">${pieceSvg(2, 'clasico')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;transform:translateX(${px(dx)})">
+        <div class="titulo" style="font-size:${px(tamTitulo)}">
+          <span style="display:block">AJEDREZ</span>
+          <span style="display:block" class="verde">MAESTRO</span>
+        </div>
+        <div style="width:110px;height:8px;border-radius:4px;background:#81B64C"></div>
+        ${opts.lema ? `<div class="lema" style="font-size:21px;max-width:400px;opacity:${frena(tramo(opts.f, opts.lemaDesde, 8)).toFixed(3)}">${opts.lema}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function escenaApertura(f, e) {
+  const local = f - e.desde;
+  return logotipo(tramo(local, 0, 14), {
+    lema: '28 rivales con carácter propio, de 250 a 2900 de Elo.',
+    f: local, lemaDesde: 11,
+  });
+}
+
+/* Diez rivales repartidos por toda la escalera, del crío al gran maestro. */
+const DESFILE = [
+  'pepito-migas', 'luli-caballitos', 'sarita-libreta', 'nando-brasas', 'marga-refranes',
+  'wanda-bombilla', 'martina-ruta', 'hugo-relojero', 'bruno-auditor', 'soren-glaciar',
+  'amalia-vectores', 'yusuf-cimientos', 'helena-teorema',
+];
+
+function tarjetaRival(bot) {
+  return `
+    <div class="rival">
+      <div class="cabecera">
+        ${botAvatarSvg(bot, 46)}
+        <div style="min-width:0">
+          <div class="nombre">${bot.name}</div>
+          <div style="display:flex;align-items:center;gap:7px;margin-top:3px">
+            <span class="elo">${bot.elo}</span>
+            ${bot.title ? `<span class="titulillo">${bot.title}</span>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="frase">${bot.tagline}</div>
+    </div>`;
+}
+
+function escenaRivales(f, e) {
+  const local = f - e.desde;
+  const entrada = frena(tramo(local, 0, 9));
+  const bots = DESFILE.map((id) => botById(id)).filter(Boolean);
+  /* Dos filas que se cruzan: la de arriba va a la izquierda, la de abajo a la
+     derecha. Se repiten los datos para que no se vea el corte. */
+  const ancho = 236 + 16;
+  const arriba = bots.concat(bots);
+  const abajo = bots.slice().reverse().concat(bots.slice().reverse());
+  const avance = local * 2.55;
+  const desplazaA = -((avance) % (ancho * bots.length));
+  const desplazaB = -(ancho * bots.length) + ((avance * 0.82) % (ancho * bots.length));
+
+  return `
+    <div class="capa" style="opacity:${entrada.toFixed(3)}">
+      <div style="position:absolute;left:56px;top:34px">
+        <div class="titulo" style="font-size:40px">Cada rival juega<span class="verde"> a su manera</span></div>
+        <div class="lema" style="font-size:18px;margin-top:10px">Aperturas propias, manías propias y hasta frases propias.</div>
+      </div>
+      <div class="carril" style="top:174px">
+        <div class="fila" style="transform:translateX(${px(desplazaA)})">${arriba.map(tarjetaRival).join('')}</div>
+      </div>
+      <div class="carril" style="top:344px">
+        <div class="fila" style="transform:translateX(${px(desplazaB)})">${abajo.map(tarjetaRival).join('')}</div>
+      </div>
+    </div>`;
+}
+
+function relojTexto(segundos) {
+  const s = Math.max(0, Math.floor(segundos));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+const RENGLONES_VISIBLES = 8;
+
+function listaJugadas(sanes, hasta) {
+  const filas = [];
+  const desde = Math.max(0, Math.ceil(hasta / 2) - RENGLONES_VISIBLES);
+  for (let n = desde; n * 2 < sanes.length && n < desde + RENGLONES_VISIBLES; n += 1) {
+    const b = sanes[n * 2];
+    const ng = sanes[n * 2 + 1];
+    filas.push(`<div class="num">${n + 1}.</div>`);
+    filas.push(`<div class="san${n * 2 === hasta - 1 ? ' actual' : ''}">${b || ''}</div>`);
+    filas.push(`<div class="san${n * 2 + 1 === hasta - 1 ? ' actual' : ''}">${ng || ''}</div>`);
+  }
+  return filas.join('');
+}
+
+/** El cartel entra dando un saltito en cuanto cae el mate. */
+function cartelDeMate(local, dura, ply) {
+  if (ply < OPERA.length) return '';
+  const cal = calendarioDePlys(dura);
+  const t = tope((local - cal[cal.length - 1].desde) / 5);
+  const escala = 0.7 + 0.3 * frena(t) + 0.06 * Math.sin(Math.PI * suave(t));
+  return `<div class="mate" style="right:56px;top:20px;
+            opacity:${frena(t * 1.6).toFixed(3)};
+            transform:scale(${escala.toFixed(3)})">Jaque mate</div>`;
+}
+
+function escenaPartida(f, e) {
+  const local = f - e.desde;
+  const entrada = frena(tramo(local, 0, 8));
+  const ply = plyEnFotograma(local, e.dura);
+  const estado = partidaHasta(ply);
+  const rival = botById('amalia-vectores');
+  /* Los relojes bajan de verdad con las jugadas, cada bando por su lado. */
+  const tuTiempo = 300 - Math.ceil(ply / 2) * 7.5;
+  const suTiempo = 300 - Math.floor(ply / 2) * 9.2;
+  const tocaBlancas = ply % 2 === 0;
+
+  return `
+    <div class="capa" style="opacity:${entrada.toFixed(3)}">
+      <div style="position:absolute;left:56px;top:30px" >
+        <div class="titulo" style="font-size:34px">Motor propio,<span class="verde"> escrito a mano</span></div>
+      </div>
+      ${dibujarTablero(estado, 392, { x: 56, y: 96, extra: `transform:scale(${(0.97 + 0.03 * entrada).toFixed(3)})` })}
+      ${cartelDeMate(local, e.dura, ply)}
+      <div class="panel" style="left:496px;top:96px;width:408px;height:392px;display:flex;flex-direction:column">
+        <div class="jugador" style="border-bottom:1.5px solid rgba(255,255,255,.09)">
+          ${botAvatarSvg(rival, 42)}
+          <div>
+            <div class="quien">${rival.name}</div>
+            <div class="sub">${rival.title} · ${rival.elo}</div>
+          </div>
+          <div class="reloj${tocaBlancas ? '' : ' activo'}">${relojTexto(suTiempo)}</div>
+        </div>
+        <div class="jugadas" style="flex:1;overflow:hidden">${listaJugadas(estado.sanes, ply)}</div>
+        <div class="jugador" style="border-top:1.5px solid rgba(255,255,255,.09)">
+          ${userAvatarSvg('promo', 42)}
+          <div>
+            <div class="quien">Tú</div>
+            <div class="sub">Blancas</div>
+          </div>
+          <div class="reloj${tocaBlancas ? ' activo' : ''}">${relojTexto(tuTiempo)}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* Las etiquetas que el juego pone de verdad a esta partida: la entrega de
+   caballo en b5 y el mate con la dama regalada. */
+const COMENTARIOS = [
+  { san: '10. Nxb5', clase: 'Gran jugada', color: '#5FB3D4', letra: '!' },
+  { san: '10... cxb5', clase: 'Error', color: '#D06A5A', letra: '?' },
+  { san: '13. Rxd7', clase: 'Mejor jugada', color: '#81B64C', letra: '★' },
+  { san: '16. Qb8+', clase: 'Brillante', color: '#3FDCBB', letra: '!!' },
+];
+
+function escenaAnalisis(f, e) {
+  const local = f - e.desde;
+  const entrada = frena(tramo(local, 0, 9));
+  const estado = partidaHasta(OPERA.length);
+  /* La barra sube hasta el mate a medida que entra la escena. */
+  const ventaja = frena(tramo(local, 4, 14));
+  const alturaBlancas = 50 + 50 * ventaja;
+
+  return `
+    <div class="capa" style="opacity:${entrada.toFixed(3)}">
+      <div style="position:absolute;left:56px;top:30px">
+        <div class="titulo" style="font-size:34px">Y después te explica<span class="verde"> qué pasó</span></div>
+      </div>
+      <div class="barraeval" style="left:56px;top:96px;height:392px">
+        <div class="blancas" style="height:${alturaBlancas.toFixed(2)}%"></div>
+      </div>
+      ${dibujarTablero(estado, 392, { x: 90, y: 96 })}
+      <div style="position:absolute;left:512px;top:96px;width:392px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;flex-direction:column;gap:13px">
+          ${COMENTARIOS.map((c, i) => {
+            const o = frena(tramo(local, 6 + i * 3, 8));
+            return `<div class="nag" style="opacity:${o.toFixed(3)};transform:translateX(${px((1 - o) * 22)})">
+              <i style="background:${c.color}">${c.letra}</i>
+              <span style="width:104px;font-variant-numeric:tabular-nums">${c.san}</span>
+              <span style="color:${c.color}">${c.clase}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="precision" style="opacity:${frena(tramo(local, 17, 9)).toFixed(3)}">
+          <div class="apagado" style="font-size:13px;font-weight:900;letter-spacing:.07em">PRECISIÓN</div>
+          <div class="accfila">
+            <span class="quien">Tú</span>
+            <span class="accbar"><i style="width:${(94 * frena(tramo(local, 18, 10))).toFixed(1)}%"></i></span>
+            <span class="pct">94%</span>
+          </div>
+          <div class="accfila">
+            <span class="quien">Amalia Reyes</span>
+            <span class="accbar"><i style="width:${(61 * frena(tramo(local, 20, 10))).toFixed(1)}%;background:#8B867E"></i></span>
+            <span class="pct">61%</span>
+          </div>
+        </div>
+        <div class="lema" style="font-size:15.5px;opacity:${frena(tramo(local, 22, 8)).toFixed(3)}">
+          Cada jugada clasificada, la precisión de los dos y el Elo estimado de la partida.
+        </div>
+      </div>
+    </div>`;
+}
+
+const MODOS = [
+  { icono: '🌐', titulo: 'Online de verdad', texto: 'Partidas en directo con relojes, revancha, chat y espectadores.' },
+  { icono: '🏆', titulo: 'Torneos completos', texto: 'Suizo, liga, eliminatoria y arena, con desempates de la FIDE.' },
+  { icono: '🎯', titulo: 'Táctica', texto: '150 problemas verificados y los que salen de tus propias derrotas.' },
+  { icono: '📈', titulo: 'Tu progreso', texto: 'Elo, Glicko-2, rachas, logros y el historial de todas tus partidas.' },
+];
+
+function escenaModos(f, e) {
+  const local = f - e.desde;
+  const tarjetas = MODOS.map((m, i) => {
+    const t = frena(tramo(local, 4 + i * 4, 11));
+    const col = i % 2;
+    const fil = Math.floor(i / 2);
+    const x = 56 + col * 416;
+    const y = 128 + fil * 174;
+    return `<div class="modo" style="left:${px(x)};top:${px(y)};opacity:${t.toFixed(3)};transform:translateY(${px((1 - t) * 26)})">
+      <div class="icono">${m.icono}</div>
+      <div>
+        <h3>${m.titulo}</h3>
+        <p>${m.texto}</p>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="capa">
+      <div style="position:absolute;left:56px;top:40px;opacity:${frena(tramo(local, 0, 8)).toFixed(3)}">
+        <div class="titulo" style="font-size:38px">No es solo<span class="verde"> jugar una partida</span></div>
+      </div>
+      ${tarjetas}
+    </div>`;
+}
+
+function escenaCierre(f, e) {
+  const local = f - e.desde;
+  const t = tramo(local, 0, 12);
+  const chips = ['Gratis', 'Sin instalar nada', 'Sin cuenta', 'Funciona sin conexión'];
+  return `
+    <div class="capa" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px">
+      <div style="position:relative;width:100%;height:230px">
+        ${logotipo(t, { pieza: 156, titulo: 64 })}
+      </div>
+      <div style="text-align:center;opacity:${frena(tramo(local, 9, 9)).toFixed(3)}">
+        <div class="lema" style="font-size:25px">Se abre en el navegador y ya estás jugando.</div>
+        <div class="verde" style="font-size:27px;font-weight:900;letter-spacing:-.01em;margin-top:13px">
+          ajedrez-maestro.onrender.com
+        </div>
+      </div>
+      <div style="display:flex;gap:11px;opacity:${frena(tramo(local, 13, 9)).toFixed(3)}">
+        ${chips.map((c, i) => `<span class="chip${i === 0 ? ' lleno' : ''}">${c}</span>`).join('')}
+      </div>
+    </div>`;
+}
+
+/* ==================================================================== *
+ * Montaje
+ * ==================================================================== */
+
+function fotograma(f) {
+  const n = ((f % TOTAL) + TOTAL) % TOTAL;
+  let escena = ESCENAS[ESCENAS.length - 1];
+  for (const e of ESCENAS) if (n >= e.desde && n < e.desde + e.dura) { escena = e; break; }
+  const div = document.createElement('div');
+  div.className = 'cuadro';
+  div.dataset.f = String(n);
+  div.innerHTML = `
+    <div class="damero"></div>
+    <div class="brillo"></div>
+    ${escena.pinta(n, escena)}
+    <div class="vineta"></div>
+    <div class="avance" style="width:${(100 * (n + 1) / TOTAL).toFixed(2)}%"></div>`;
+  return div;
+}
+
+const params = new URLSearchParams(location.search);
+const desde = Number(params.get('desde')) || 0;
+const cuantos = Math.max(1, Number(params.get('cuantos')) || 1);
+const hoja = document.getElementById('hoja');
+for (let i = 0; i < cuantos; i += 1) hoja.appendChild(fotograma(desde + i));
+
+/* Lo que lee el capturador para saber cuántos fotogramas hay que sacar. */
+document.title = 'promo ' + TOTAL;
+window.PROMO = { TOTAL, FPS, escenas: ESCENAS.map((e) => ({ nombre: e.nombre, desde: e.desde, dura: e.dura })) };
+</script>
+</body>
+</html>

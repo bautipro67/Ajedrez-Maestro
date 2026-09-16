@@ -9,3 +9,8 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+
+# Los fotogramas sueltos del vídeo promocional: 59 MB de PNG que se vuelven a
+# generar con `python tools/grabar-promo.py`. Los GIF sí se guardan.
+promo/fotogramas/
+__pycache__/
