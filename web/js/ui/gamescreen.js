@@ -404,7 +404,11 @@ export function mount(root, ctx, params = {}) {
 
   function afterMove(entry, who) {
     if (clock) {
-      clock.press(entry.color === 'w' ? 'w' : 'b');
+      /* El campo de una jugada se llama `by`, no `color`. Con el nombre mal,
+         esto era siempre press('b'): el incremento iba al jugador equivocado y
+         el reloj se quedaba corriendo en el bando que ya habia movido. En toda
+         partida con reloj contra un bot, local o de torneo. */
+      clock.press(entry.by === 'w' ? 'w' : 'b');
       game.setClockSnapshot(clock.getTimes());
     }
     ctx.sound?.playMoveSound?.({
@@ -916,7 +920,10 @@ export function mount(root, ctx, params = {}) {
         ? '1/2-1/2'
         : ((result === 'win') === (myColor === 'w') ? '1-0' : '0-1');
       const stored = getTournament(params.tournamentId);
-      if (!stored) return;
+      if (!stored) {
+        ctx.toast?.('Ese torneo ya no existe: el resultado no se pudo anotar.', 'warn');
+        return;
+      }
       const t = deserialize(stored);
       reportResult(t, params.gameId, pgnResult);
       saveTournament(serialize(t));
@@ -1292,6 +1299,15 @@ export function mount(root, ctx, params = {}) {
   return {
     unmount() {
       destroyed = true;
+      /* Irse de una partida de torneo a medias contaba como si no hubiera
+         pasado nada: al volver, la pantalla la ofrecia otra vez desde la
+         posicion inicial, asi que se podia repetir hasta ganar y la
+         clasificacion no significaba nada. En un torneo de verdad, quien
+         abandona la mesa pierde. Solo cuenta si llego a jugarse algo: una
+         recarga antes de la primera jugada no es abandonar. */
+      if (mode === 'tournament' && game && !game.status.over && game.ply() > 0) {
+        reportToTournament('loss');
+      }
       for (const fn of cleanups) {
         try { fn(); } catch { /* nada que hacer */ }
       }

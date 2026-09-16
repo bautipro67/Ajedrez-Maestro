@@ -13,7 +13,9 @@ import {
   createTournament, nextRound, reportResult, standings, isFinished,
   pendingGames, tournamentSummary, serialize, deserialize, tournamentPlayer, FORMATS,
 } from '../tournament.js';
-import { loadTournaments, saveTournament, getTournament, deleteTournament } from '../storage.js';
+import {
+  deleteTournament, loadTournaments, saveTournament, getTournament, recordTournament,
+} from '../storage.js';
 import { BOTS, botById } from '../bots.js';
 import { TIME_CONTROLS } from '../clock.js';
 import { ratingTier } from '../elo.js';
@@ -326,6 +328,27 @@ export function mount(root, ctx, params = {}) {
     clear(screen);
     const done = isFinished(t);
     const pending = pendingGames(t);
+    /* Ganar un torneo no dejaba rastro: nadie pasaba nunca `tournamentWon`,
+       asi que el perfil seguia diciendo cero torneos jugados y los dos logros
+       de torneos eran imposibles. Se apunta al terminar, una sola vez. */
+    if (done) {
+      try {
+        const clasificacion = standings(t);
+        const yo = t.players.find((p) => p.isHuman);
+        const gane = !!(yo && clasificacion[0] && clasificacion[0].playerId === yo.id);
+        const nuevos = recordTournament({
+          id: t.id,
+          jugado: !!yo,
+          ganado: gane,
+          totalBots: t.players.filter((p) => !p.isHuman).length,
+        });
+        /* recordTournament devuelve [] si ya estaba contado, asi que el aviso
+           solo sale la primera vez. */
+        if (gane && nuevos !== null) ctx.celebrate?.(nuevos);
+      } catch {
+        /* que falle el recuento no puede impedir ver el podio */
+      }
+    }
 
     screen.appendChild(el('div', { class: 'screen__head' },
       el('div', { class: 'col grow' },
@@ -375,7 +398,13 @@ export function mount(root, ctx, params = {}) {
     }
     if (botGames.length) {
       row.appendChild(button(`Simular ${botGames.length} partida${botGames.length === 1 ? '' : 's'} de bots`, {
-        onClick: () => simulate(t, botGames, info),
+        onClick: () => {
+        simulate(t, botGames, info).catch((err) => {
+          simulating = false;
+          ctx.toast?.('Se cortó la simulación: ' + (err?.message || err), 'err');
+          if (!destroyed) renderDetail(t.id);
+        });
+      },
         disabled: simulating,
       }));
     }
@@ -419,35 +448,57 @@ export function mount(root, ctx, params = {}) {
 
     try {
       for (const game of games) {
-        if (destroyed) return;
+        if (destroyed) break;
         const result = await playBotGame(t, game);
-        if (destroyed) return;
+        /* Se anota ANTES de mirar si seguimos en la pantalla: la partida ya se
+           jugó entera —hasta medio minuto de motor— y salirse a mitad de la
+           tanda no puede tirarla a la basura y obligar a repetirla. */
         const fresh = loadDetail(t.id);
-        if (!fresh) return;
+        if (!fresh) break;
         try {
           reportResult(fresh, game.id, result);
           save(fresh);
         } catch {
           /* ya lo habia anotado otra pasada */
         }
+        if (destroyed) break;
         played++;
         bar.lastChild.textContent = `Jugando… ${played} de ${games.length}`;
       }
     } finally {
       simulating = false;
     }
+    /* Repintar siempre que sigamos aqui, tambien si la tanda se corto: si no,
+       la pantalla se quedaba con el spinner girando para siempre. */
     if (!destroyed) renderDetail(t.id);
   }
 
-  /** Plays a full bot-versus-bot game headlessly and returns its PGN result. */
-  async function playBotGame(t, game) {
+/** Un numero a partir de un texto, para sembrar con el id entero. */
+function hashDeTexto(texto) {
+  let h = 2166136261;
+  const s = String(texto || '');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Plays a full bot-versus-bot game headlessly and returns its PGN result. */
+async function playBotGame(t, game) {
     const whiteBot = tournamentPlayer(t, game.white)?.botId;
     const blackBot = game.black ? tournamentPlayer(t, game.black)?.botId : null;
     if (!whiteBot || !blackBot) return '1-0';
 
     const pos = C.createPosition();
     const history = [];
-    const seed = (t.seed + game.round * 131 + game.id.length) >>> 0;
+    /* La semilla salia de la LONGITUD del id, no del id. Los desempates de una
+     eliminatoria se llaman -d1, -d2, -d3... y miden todos lo mismo: misma
+     semilla, mismos bots, misma posicion y colores que se invierten en cada
+     desempate, asi que el tercero repetia jugada a jugada el primero. Dos bots
+     parejos que empatan se quedaban empatando para siempre y el cuadro no
+     podia terminar. */
+  const seed = (t.seed + game.round * 131 + hashDeTexto(game.id)) >>> 0;
 
     for (let ply = 0; ply < 300; ply++) {
       if (destroyed) return '1/2-1/2';

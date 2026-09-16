@@ -97,6 +97,7 @@ export function defaultProfile() {
       bestWin: null,
       totalMoves: 0, totalTimeMs: 0,
       tournamentsPlayed: 0, tournamentsWon: 0,
+      tournamentsCounted: [],   // ids ya apuntados, para no contarlos dos veces
     },
     achievements: [],
     defeatedBots: [],
@@ -348,6 +349,30 @@ export function recordPuzzle({ id, solved, theme = 'ventaja', rating = null, del
 
   writeRoot(root);
   return profile;
+}
+
+/**
+ * Apunta que un torneo empezó o terminó. Sin esto, ganar un torneo no dejaba
+ * rastro: `tournamentsPlayed` y `tournamentsWon` se quedaban en cero para
+ * siempre y los dos logros de torneos eran imposibles de conseguir, porque
+ * nadie pasaba nunca `tournamentWon`.
+ */
+export function recordTournament({ id = null, jugado = false, ganado = false, totalBots = 0 } = {}) {
+  const root = readRoot();
+  const stats = root.profile.stats;
+  /* Idempotente por id. La pantalla de un torneo terminado se repinta cada vez
+     que se entra, y `serialize` no guarda campos que no conozca, asi que una
+     marca puesta en el torneo no sobrevivia: cada visita sumaba otro torneo
+     jugado. La lista de contados vive con el perfil, que si se guarda entero. */
+  if (!Array.isArray(stats.tournamentsCounted)) stats.tournamentsCounted = [];
+  if (id && stats.tournamentsCounted.includes(id)) return [];
+  if (id) stats.tournamentsCounted.push(id);
+
+  if (jugado) stats.tournamentsPlayed = (stats.tournamentsPlayed || 0) + 1;
+  if (ganado) stats.tournamentsWon = (stats.tournamentsWon || 0) + 1;
+  writeRoot(root);
+  if (!ganado) return [];
+  return unlockAchievements({ tournamentWon: true, totalBots });
 }
 
 export function unlockAchievements(extraContext = {}) {
