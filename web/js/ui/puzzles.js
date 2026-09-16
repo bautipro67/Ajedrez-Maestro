@@ -9,7 +9,10 @@
 
 import { el, clear, button, card, chip, spinner, emptyState } from './components.js';
 import { createBoard } from '../board.js';
-import { createPosition, generateMoves, moveToUci, uciToMove, makeMove, getFen, moveToSan, gameResult } from '../chess.js';
+import {
+  createPosition, generateMoves, moveToUci, uciToMove, makeMove, getFen, moveToSan,
+  gameResult, squareName, moveFrom, moveTo, movePromo, isCapture, isEnPassant,
+} from '../chess.js';
 import { PUZZLES } from '../puzzledata.js';
 import {
   PUZZLE_THEMES, STARTING_PUZZLE_RATING, createSolver, pickPuzzle,
@@ -35,6 +38,33 @@ function sanOf(fen, uci) {
   }
 }
 
+/**
+ * El tablero no sabe reglas: hay que decirle qué jugadas son legales o no
+ * acepta ninguna. Sin esto la pantalla se veía bien y no se podía mover nada.
+ */
+function legalMapOf(fen) {
+  const mapa = new Map();
+  let pos;
+  try {
+    pos = createPosition(fen);
+  } catch {
+    return mapa;
+  }
+  for (const move of generateMoves(pos, { legal: true })) {
+    const desde = squareName(moveFrom(move));
+    const hasta = squareName(moveTo(move));
+    let lista = mapa.get(desde);
+    if (!lista) { lista = []; mapa.set(desde, lista); }
+    if (lista.some((d) => d.to === hasta)) continue;
+    lista.push({
+      to: hasta,
+      capture: isCapture(move) || isEnPassant(move),
+      promotion: movePromo(move) !== 0,
+    });
+  }
+  return mapa;
+}
+
 function legalCountOf(fen) {
   try {
     return generateMoves(createPosition(fen), { legal: true }).length;
@@ -56,6 +86,7 @@ export function mount(root, ctx, params = {}) {
   let solver = null;
   let resuelto = false;       // ya se cerró (acertado o no)
   let usoPista = false;
+  let esperandoRespuesta = false;   // el rival está contestando: no toques nada
   const tanda = [];
 
   clear(root);
@@ -140,6 +171,18 @@ export function mount(root, ctx, params = {}) {
 
   /* ------------------------------ acciones ------------------------------ */
 
+  /**
+   * Pone al día lo que el tablero deja hacer: qué jugadas son legales y de qué
+   * color se puede mover. Solo tus piezas, y solo cuando te toca.
+   */
+  function refrescarTablero() {
+    if (!problema) return;
+    board.setLegalMoves(legalMapOf(board.getFen()));
+    const mio = colorOf(problema.fen);
+    board.setMovableColor(resuelto || esperandoRespuesta ? 'none' : mio);
+    board.setInteractive(!resuelto);
+  }
+
   function pintarCabecera() {
     puntuacion.textContent = String(Math.round(stats.rating || STARTING_PUZZLE_RATING));
     const r = stats.currentStreak || 0;
@@ -167,9 +210,10 @@ export function mount(root, ctx, params = {}) {
     usoPista = false;
 
     board.clearArrows();
-    board.setPosition(p.fen, { animate: false });
     board.setOrientation(colorOf(p.fen));
-    board.setInteractive(true);
+    board.setPosition(p.fen, { animate: false });
+    esperandoRespuesta = false;
+    refrescarTablero();
 
     const tema = PUZZLE_THEMES[p.theme] || PUZZLE_THEMES.ventaja;
     temaChip.textContent = tema.label;
@@ -201,14 +245,23 @@ export function mount(root, ctx, params = {}) {
     /* La jugada buena: se aplica y contesta el rival. */
     aplicar(uci);
     if (res.reply) {
+      esperandoRespuesta = true;
+      refrescarTablero();
       setTimeout(() => {
         if (destroyed || problema !== solver.puzzle) return;
         aplicar(res.reply);
-        if (solver.solved()) cerrar(true);
-        else veredicto.textContent = 'Bien. Seguí.';
+        esperandoRespuesta = false;
+        if (solver.solved()) {
+          cerrar(true);
+        } else {
+          veredicto.textContent = 'Bien. Seguí.';
+          refrescarTablero();
+        }
       }, 420);
     } else if (res.solved) {
       cerrar(true);
+    } else {
+      refrescarTablero();
     }
     return true;
   }
@@ -219,13 +272,20 @@ export function mount(root, ctx, params = {}) {
     const move = uciToMove(pos, uci);
     if (!move) return;
     makeMove(pos, move);
-    board.setPosition(getFen(pos), { animate: true, lastMove: [uci.slice(0, 2), uci.slice(2, 4)] });
+    /* El tablero quiere {from, to}: con una lista, renderMarks reventaba al
+       pintar la ultima jugada y se llevaba por delante toda la interaccion. */
+    board.setPosition(getFen(pos), {
+      animate: true,
+      lastMove: { from: uci.slice(0, 2), to: uci.slice(2, 4) },
+    });
+    board.setLegalMoves(legalMapOf(board.getFen()));
   }
 
   function cerrar(acertado) {
     if (resuelto) return;
     resuelto = true;
-    board.setInteractive(false);
+    esperandoRespuesta = false;
+    refrescarTablero();
     botonPista.disabled = true;
     botonSolucion.disabled = true;
 

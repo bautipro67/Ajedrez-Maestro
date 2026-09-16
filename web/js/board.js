@@ -26,6 +26,9 @@ function squareName(file, rank) {
 }
 
 function parseSquare(name) {
+  /* Cualquier cosa que no sea el nombre de una casilla se descarta aqui: un
+     parametro con la forma equivocada no puede dejar el tablero inservible. */
+  if (typeof name !== 'string' || name.length < 2) return null;
   const file = FILES.indexOf(name[0]);
   const rank = Number(name[1]) - 1;
   if (file < 0 || rank < 0 || rank > 7) return null;
