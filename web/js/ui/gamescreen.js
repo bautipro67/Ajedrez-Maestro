@@ -1074,7 +1074,35 @@ export function mount(root, ctx, params = {}) {
     paintClocks();
   }
 
+  /**
+   * Lo que dice el servidor de un error. Va lo PRIMERO a proposito: estaba
+   * debajo del `if (!game) return` que hay mas abajo, o sea justo debajo del
+   * caso para el que se escribio, y no se ejecutaba nunca. Por eso una partida
+   * que no existe dejaba la pantalla en «Conectando con la partida…» para
+   * siempre, sin un mensaje ni una salida.
+   */
+  function manejarErrorDelServidor(msg) {
+    const motivo = ONLINE_ERRORS[msg.code] || msg.message || 'No pude entrar en la partida.';
+    if (game && !game.status.over) {
+      /* Con la partida en marcha, un rechazo significa que la pantalla y el
+         servidor dejaron de contar lo mismo: se pide el estado entero. */
+      ctx.toast?.(motivo, 'err');
+      setStatus('Recuperando la partida del servidor…');
+      try { ctx.online.join(params.gameId); } catch { /* el cliente reintenta solo */ }
+      return;
+    }
+    setStatus(motivo);
+    if (salidaPuesta) return;
+    salidaPuesta = true;
+    panel.appendChild(el('div', { class: 'row row--wrap gap-6', style: { marginTop: '10px' } },
+      button('Volver al lobby', { variant: 'primary', onClick: () => ctx.navigate('#/online') })));
+  }
+
   function handleOnlineEvent(msg) {
+    if (msg.t === 'error') {
+      manejarErrorDelServidor(msg);
+      return;
+    }
     if (msg.t === 'gameStart' && msg.game) {
       if (msg.game.id === params.gameId) {
         buildOnlineGame(msg.game);
@@ -1120,26 +1148,6 @@ export function mount(root, ctx, params = {}) {
       setStatus('Tu rival volvió.');
       sync({ animate: false });
       return;
-    }
-    /* Un error del servidor con la partida ya en marcha se tiraba a la basura:
-       tu jugada se quedaba pintada en tu tablero y el rival no la veia nunca. */
-    if (msg.t === 'error' && game && !game.status.over) {
-      ctx.toast?.(ONLINE_ERRORS[msg.code] || msg.message || 'El servidor rechazó algo.', 'err');
-      setStatus('Recuperando la partida del servidor…');
-      try { ctx.online.join(params.gameId); } catch { /* el cliente reintenta solo */ }
-      return;
-    }
-    /* Si el servidor dice que esa partida no existe o que no es tuya, antes se
-       quedaba «Conectando con la partida…» para siempre, sin decir nada ni
-       dejar salir. */
-    if (msg.t === 'error' && !game) {
-      const motivo = ONLINE_ERRORS[msg.code] || msg.message || 'No pude entrar en la partida.';
-      setStatus(motivo);
-      if (!salidaPuesta) {
-        salidaPuesta = true;
-        panel.appendChild(el('div', { class: 'row row--wrap gap-6', style: { marginTop: '10px' } },
-          button('Volver al lobby', { variant: 'primary', onClick: () => ctx.navigate('#/online') })));
-      }
     }
   }
 
