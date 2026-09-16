@@ -12,7 +12,7 @@ import { setLiveElo } from './bots.js';
 import { fetchGithubElo, cachedGithubElo } from './github.js';
 import { ratingTier } from './elo.js';
 import { userAvatarSvg } from './pieces.js';
-import { el, clear, toast, modal, confirmDialog, achievementToast } from './ui/components.js';
+import { el, clear, toast, modal, confirmDialog, achievementToast, closeAllModals } from './ui/components.js';
 import { achievementById } from './achievements.js';
 
 const ROUTES = [
@@ -127,6 +127,10 @@ const ctx = {
     }
     return state.online;
   },
+
+  /* Para poder pararlo sin arrancarlo: `ctx.ai` es perezoso y pedirlo para
+     llamar a stop() creaba los workers justo al salir de la pantalla. */
+  hasAi: () => !!state.ai,
 
   onOnlineEvent(cb) {
     onlineListeners.add(cb);
@@ -262,6 +266,8 @@ async function render() {
   if (token !== renderToken) return;
 
   clear(root);
+  /* Un dialogo de la pantalla anterior no puede sobrevivirla. */
+  closeAllModals();
   try {
     state.current = module.mount(root, ctx, matched.params) || null;
   } catch (error) {

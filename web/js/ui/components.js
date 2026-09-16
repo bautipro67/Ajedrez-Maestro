@@ -406,6 +406,20 @@ function host() {
  * modal({title, body, actions:[{label, variant, onClick, close}], dismissable})
  * Returns { close }. Actions close the modal unless `close:false`.
  */
+/* Los dialogos viven en #modal-host, fuera del trozo de pagina que el router
+   limpia al cambiar de pantalla. Sin este registro se quedaban colgados encima
+   de la pantalla siguiente —el resumen de una partida terminada flotando sobre
+   la lista de bots, con botones que ya no llevan a ninguna parte—. */
+const abiertos = new Set();
+
+/** Cierra todos los diálogos abiertos. La usa el router al cambiar de pantalla. */
+export function closeAllModals() {
+  for (const cerrar of [...abiertos]) {
+    try { cerrar(); } catch { /* uno que falle no puede dejar los demas abiertos */ }
+  }
+  abiertos.clear();
+}
+
 export function modal({ title, body, actions = [], dismissable = true, wide = false } = {}) {
   const backdrop = el('div', { class: 'modal-backdrop' });
   const dialog = el('div', {
@@ -424,6 +438,7 @@ export function modal({ title, body, actions = [], dismissable = true, wide = fa
   function close() {
     document.removeEventListener('keydown', onKey);
     backdrop.remove();
+    abiertos.delete(close);
   }
 
   if (actions.length) {
@@ -449,6 +464,7 @@ export function modal({ title, body, actions = [], dismissable = true, wide = fa
     backdrop.addEventListener('pointerdown', (ev) => { if (ev.target === backdrop) close(); });
   }
 
+  abiertos.add(close);
   backdrop.appendChild(dialog);
   host().appendChild(backdrop);
 

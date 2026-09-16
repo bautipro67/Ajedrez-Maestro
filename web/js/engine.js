@@ -541,6 +541,12 @@ export function createSearcher(options = {}) {
     let bestScore = 0;
     let bestEntry = entries[0];
     let completedDepth = 0;
+    /* Foto de la ultima iteracion COMPLETA. Una cortada por el reloj —que es
+       como acaban casi todas las busquedas de un bot— deja unas jugadas
+       puntuadas a esta profundidad y otras a la anterior, mezcladas y sin
+       reordenar. Repartir entre ellas es repartir entre numeros que no se
+       pueden comparar. */
+    let completedMoves = null;
 
     for (let depth = 1; depth <= maxDepth; depth++) {
       let alpha = -INFINITE;
@@ -611,6 +617,9 @@ export function createSearcher(options = {}) {
         bestEntry = entries[0];
         bestScore = bestEntry.score;
         completedDepth = depth;
+        completedMoves = entries.map((m) => ({
+          move: m.move, score: m.score, pv: m.pv.slice(), mate: m.mate, exact: m.exact === true,
+        }));
       } else if (completedDepth === 0) {
         bestEntry = iterationBest;
         bestScore = iterationBest.score;
@@ -632,7 +641,13 @@ export function createSearcher(options = {}) {
       nodes,
       timeMs: Date.now() - started,
       pv: bestEntry.pv.slice(),
-      moves: entries.map((e) => ({ move: e.move, score: e.score, pv: e.pv.slice(), mate: e.mate })),
+      /* `exact` viaja con la jugada: sin el, quien reparta entre ellas no puede
+         distinguir una puntuacion de una cota, y las cotas se quedan pegadas a
+         la de la mejor. Se quedo sin copiar y el filtro de los bots no
+         descartaba nada. */
+      moves: completedMoves || entries.map((e) => ({
+        move: e.move, score: e.score, pv: e.pv.slice(), mate: e.mate, exact: e.exact === true,
+      })),
     };
   }
 

@@ -27,7 +27,9 @@ function mulberry32(seed) {
 function mergedProfile(bot, eloEnVivo = null) {
   /* Un bot puede traer el Elo de fuera (Bauverso lo saca de GitHub): manda ese
      si llega, porque el del fichero es solo el de reserva. */
-  const elo = Number.isFinite(eloEnVivo) ? eloEnVivo : bot.elo;
+  /* Un cero o un negativo no es un Elo: seria convertir al mejor bot en uno
+     de 250 sin que nadie lo pidiera. */
+  const elo = Number.isFinite(eloEnVivo) && eloEnVivo > 0 ? eloEnVivo : bot.elo;
   const base = strengthProfile(elo);
   return { ...base, ...(bot.strength || {}) };
 }

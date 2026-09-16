@@ -11,6 +11,7 @@ import { test, assert, assertEqual, assertClose, run } from './harness.js';
 import {
   winPercent, winPercentOf, classifyMove, moveAccuracy, gameAccuracy,
   estimateRating, isSacrifice, buildReport, phaseOf, heavyMaterial, MOVE_CLASSES,
+  accuracyFromPlyEvals,
 } from '../web/js/report.js';
 
 /* -------------------------- probabilidad de ganar ------------------------ */
@@ -104,6 +105,42 @@ test('el nivel estimado se mueve en el rango de los bots', () => {
   assert(flojo >= 250 && flojo <= 1200, 'una partida floja no da 2500: ' + flojo);
   assert(fuerte > flojo + 800, 'y una buena tiene que quedar muy por encima: ' + fuerte);
   assert(fuerte <= 2900, 'sin pasarse del techo');
+});
+
+test('la precisión de una partida es la del bando que se pide, no la del otro', () => {
+  /* Blancas cuelgan la dama en su segunda jugada; negras la cogen. La nota de
+     las blancas tiene que ser mala y la de las negras buena. Antes salían
+     cambiadas: el resumen te daba la precisión del rival con tu nombre, y
+     después de regalar la dama leías «93,5 %». */
+  const evals = [0, 20, 15, -850, -860, -845, -855];
+  const blancas = accuracyFromPlyEvals(evals, 'w');
+  const negras = accuracyFromPlyEvals(evals, 'b');
+  assert(blancas !== null && negras !== null, 'con seis jugadas hay nota de los dos');
+  assert(blancas < 60, 'regalar la dama no puede dar buena nota, y dio ' + blancas.toFixed(1));
+  assert(negras > 85, 'quien la cogió jugó bien, y le dio ' + negras.toFixed(1));
+});
+
+test('un hueco en las evaluaciones no te carga el error del rival', () => {
+  /* El motor contesta cuando puede y alguna evaluación se pierde por el camino.
+     Aquí las blancas juegan bien y las negras regalan en su jugada 2. Con un
+     hueco en medio, la nota de las blancas tiene que seguir siendo buena: si
+     se cuenta por posición en la lista en vez de por ply, se comen el desastre
+     del rival. */
+  const completas = [0, 10, 5, 12, 900, 890, 905];
+  const conHueco = [0, 10, 5, undefined, 900, 890, 905];
+  const blancasLimpio = accuracyFromPlyEvals(completas, 'w');
+  const blancasConHueco = accuracyFromPlyEvals(conHueco, 'w');
+  const negras = accuracyFromPlyEvals(completas, 'b');
+  assert(blancasLimpio > 90, 'las blancas jugaron bien: ' + blancasLimpio.toFixed(1));
+  assert(negras < 50, 'las negras regalaron: ' + negras.toFixed(1));
+  assert(blancasConHueco !== null, 'con un hueco todavía quedan dos jugadas que medir');
+  assert(blancasConHueco > 80,
+    'el hueco no puede pasarle a las blancas el error de las negras: ' + blancasConHueco.toFixed(1));
+});
+
+test('sin suficientes jugadas no se inventa una precisión', () => {
+  assertEqual(accuracyFromPlyEvals([0, 12], 'w'), null, 'una sola jugada no dice nada');
+  assertEqual(accuracyFromPlyEvals([], 'w'), null);
 });
 
 /* -------------------------------- material ------------------------------- */

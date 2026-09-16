@@ -15,10 +15,10 @@ import { uciToMove, moveToSan } from '../chess.js';
 import { createBoard } from '../board.js';
 import { createClock, TIME_CONTROLS, CATEGORY_NAMES, timeCategory, formatClock } from '../clock.js';
 import { botById, botLine, eloOf } from '../bots.js';
-import { recordResult, getTournament, saveTournament } from '../storage.js';
+import { recordResult, getTournament, saveTournament, loadGames } from '../storage.js';
 import { deserialize, serialize, reportResult, tournamentPlayer } from '../tournament.js';
 import { analyzeGame, achievementById } from '../achievements.js';
-import { accuracyFromLoss } from '../ai.js';
+import { accuracyFromPlyEvals } from '../report.js';
 import { openingName } from '../book.js';
 import { ratingTier, STARTING_RATING } from '../elo.js';
 
@@ -236,7 +236,7 @@ export function mount(root, ctx, params = {}) {
   let viewIndex = -2;          // -2 = en vivo; si no, indice de jugada mirada
   let thinking = false;
   let hintsLeft = allowHints ? 3 : 0;
-  let evals = [];              // centipeones desde las blancas, para precision
+  let evals = [0];             // por ply: centipeones desde las blancas (0 = inicial)
   let lastBotScore = null;
   let ended = false;
 
@@ -272,7 +272,9 @@ export function mount(root, ctx, params = {}) {
       black,
     });
 
-    evals = [];
+    /* El ply 0 es la posicion inicial: sin ella la primera jugada no tiene con
+       que compararse y se perdia de la cuenta. */
+    evals = [0];
     lastBotScore = null;
     ended = false;
     viewIndex = -2;
@@ -631,16 +633,25 @@ export function mount(root, ctx, params = {}) {
     bubble.classList.remove('hidden');
   }
 
+  /**
+   * Evalúa la posición actual y la guarda EN SU PLY. Guardarla por orden de
+   * llegada no valía: el motor contesta cuando puede, algunas evaluaciones se
+   * descartan, y la lista quedaba con agujeros; al contar la precisión, cada
+   * jugada se emparejaba con la del rival y el resumen daba la precisión del
+   * otro con tu nombre.
+   */
   async function refreshEval() {
     if (!bar || !ctx.ai?.evalOnly) return;
     const fen = game.getFen();
+    const ply = game.ply();
+    const turno = game.turn();
     try {
       const score = await ctx.ai.evalOnly(fen);
-      if (destroyed || game.getFen() !== fen) return;
+      if (destroyed) return;
       /* evalOnly puntua desde el bando que mueve; la barra habla en blancas. */
-      const white = game.turn() === 'w' ? score : -score;
-      evals.push(white);
-      bar.setScore(white, null);
+      const white = turno === 'w' ? score : -score;
+      evals[ply] = white;
+      if (game.getFen() === fen) bar.setScore(white, null);
     } catch {
       /* que falle la barra no puede estropear la partida */
     }
@@ -658,6 +669,10 @@ export function mount(root, ctx, params = {}) {
 
   function onKey(event) {
     if (event.target && /input|textarea|select/i.test(event.target.localName || '')) return;
+    /* En online la pantalla existe antes que la partida: hasta que llega del
+       servidor, cualquier tecla reventaba con "history de null", y si el
+       servidor contestaba que esa partida no existe, en todas las teclas. */
+    if (!game) return;
     const last = game.history.length - 1;
     const current = isLive() ? last : viewIndex;
     if (event.key === 'ArrowLeft') { setView(current - 1); event.preventDefault(); }
@@ -725,7 +740,7 @@ export function mount(root, ctx, params = {}) {
             return;
           }
           /* Un bot acepta las tablas solo si de verdad esta igualado. */
-          const last = evals.length ? evals[evals.length - 1] : 0;
+          const last = evals.length ? (evals[evals.length - 1] ?? 0) : 0;
           const fromMe = myColor === 'w' ? last : -last;
           if (Math.abs(fromMe) < 40 && game.ply() > 20) {
             game.offerDraw(myColor);
@@ -818,21 +833,7 @@ export function mount(root, ctx, params = {}) {
   }
 
   function accuracy() {
-    if (evals.length < 4) return null;
-    const mine = myColor === 'w' ? 1 : -1;
-    let loss = 0;
-    let n = 0;
-    for (let i = 1; i < evals.length; i++) {
-      const before = evals[i - 1] * mine;
-      const after = evals[i] * mine;
-      /* Solo cuentan las jugadas propias. */
-      const moverWasMe = (i % 2 === 1) === (myColor === 'w');
-      if (!moverWasMe) continue;
-      loss += Math.max(0, before - after);
-      n++;
-    }
-    if (!n) return null;
-    return accuracyFromLoss(loss / n);
+    return accuracyFromPlyEvals(evals, myColor);
   }
 
   function finish() {
@@ -856,8 +857,15 @@ export function mount(root, ctx, params = {}) {
     let record = null;
     /* Online tambien se guarda: antes la partida se perdia entera —no quedaba
        en el historial y «Analizar» abria un tablero vacio— aunque fuese la
-       unica contra una persona de verdad. */
-    if (mode === 'bot' || mode === 'tournament' || mode === 'online') {
+       unica contra una persona de verdad.
+       Pero SOLO UNA VEZ: al reconectar, el servidor reenvia la partida ya
+       terminada, la pantalla la reconstruia y la volvia a dar por acabada, asi
+       que una caida de conexion de dos segundos dejaba dos copias en el
+       historial y los logros contados dos veces. */
+    const yaGuardada = mode === 'online' && params.gameId
+      ? loadGames(40).some((partida) => partida.onlineId === params.gameId)
+      : false;
+    if (!yaGuardada && (mode === 'bot' || mode === 'tournament' || mode === 'online')) {
       try {
         const facts = analyzeGame({
           sanMoves: game.sanMoves(),
@@ -882,6 +890,9 @@ export function mount(root, ctx, params = {}) {
              inventaria un segundo Elo que no cuadra con el suyo. */
           rated: mode === 'online' ? false : rated,
           myColor,
+          /* Con que partida online se corresponde: es lo que permite no
+             guardarla dos veces cuando el servidor la reenvia al reconectar. */
+          onlineId: mode === 'online' ? params.gameId : null,
           pgn: game.getPgn(),
           sanMoves: game.sanMoves(),
           facts,
@@ -1110,6 +1121,14 @@ export function mount(root, ctx, params = {}) {
       sync({ animate: false });
       return;
     }
+    /* Un error del servidor con la partida ya en marcha se tiraba a la basura:
+       tu jugada se quedaba pintada en tu tablero y el rival no la veia nunca. */
+    if (msg.t === 'error' && game && !game.status.over) {
+      ctx.toast?.(ONLINE_ERRORS[msg.code] || msg.message || 'El servidor rechazó algo.', 'err');
+      setStatus('Recuperando la partida del servidor…');
+      try { ctx.online.join(params.gameId); } catch { /* el cliente reintenta solo */ }
+      return;
+    }
     /* Si el servidor dice que esa partida no existe o que no es tuya, antes se
        quedaba «Conectando con la partida…» para siempre, sin decir nada ni
        dejar salir. */
@@ -1180,7 +1199,9 @@ export function mount(root, ctx, params = {}) {
       if (!hecho || hecho.ok === false) break;
     }
 
-    evals = [];
+    /* El ply 0 es la posicion inicial: sin ella la primera jugada no tiene con
+       que compararse y se perdia de la cuenta. */
+    evals = [0];
     ended = false;
     viewIndex = -2;
     hintsLeft = 0;
@@ -1233,6 +1254,14 @@ export function mount(root, ctx, params = {}) {
     const ultima = yaHechas[yaHechas.length - 1];
     if (ultima !== msg.uci || yaHechas.length === 0) {
       const hecho = game.playUci(msg.uci);
+      if (!hecho || hecho.ok === false) {
+        /* La pantalla y el servidor dejaron de contar la misma partida. Antes
+           se quedaba asi para siempre y todas las jugadas siguientes fallaban
+           igual; ahora se pide el estado entero y se vuelve a empezar. */
+        setStatus('Me perdí con el servidor, recuperando…');
+        try { ctx.online.join(params.gameId); } catch { /* el cliente reintenta */ }
+        return;
+      }
       if (hecho && hecho.ok !== false) {
         syncClocks(msg.clocks);
         clearPremove();
@@ -1258,7 +1287,9 @@ export function mount(root, ctx, params = {}) {
       for (const fn of cleanups) {
         try { fn(); } catch { /* nada que hacer */ }
       }
-      try { ctx.ai?.stop?.(); } catch { /* el motor ya estaba parado */ }
+      /* ctx.ai es perezoso: pedirlo para pararlo arrancaba los workers justo
+         al salir de la pantalla. */
+      if (ctx.hasAi?.()) { try { ctx.ai.stop(); } catch { /* ya estaba parado */ } }
       if (clock) clock.destroy();
       if (board) board.destroy();
       clear(root);

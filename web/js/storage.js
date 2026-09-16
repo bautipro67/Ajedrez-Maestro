@@ -333,6 +333,10 @@ export function recordPuzzle({ id, solved, theme = 'ventaja', rating = null, del
     p.currentStreak = 0;
   }
   if (typeof rating === 'number' && Number.isFinite(rating)) p.rating = Math.round(rating);
+  /* Un perfil traido de una version intermedia puede no tener el reparto por
+     tema; sin esta linea, la primera llamada lanzaba y el entrenamiento no
+     guardaba NADA en silencio. */
+  if (!p.byTheme || typeof p.byTheme !== 'object') p.byTheme = {};
   const porTema = p.byTheme[theme] || { solved: 0, failed: 0 };
   if (solved) porTema.solved += 1; else porTema.failed += 1;
   p.byTheme[theme] = porTema;

@@ -378,6 +378,10 @@ export function mount(root, ctx, params = {}) {
   /* ------------------------------ line edits ------------------------------ */
 
   function setLine(newStartFen, moves, meta = {}) {
+    /* Un repaso en marcha es de la partida de ANTES: si se le deja terminar,
+       sus evaluaciones caen en los índices de la partida nueva y el informe
+       mezcla dos partidas distintas. */
+    detenerRepaso('se cargó otra partida');
     startFen = newStartFen;
     line = moves;
     headers = meta.headers || {};
@@ -551,6 +555,7 @@ export function mount(root, ctx, params = {}) {
     const fenAfter = fenAt(index + 1);
     const color = String(entry.fenBefore).split(' ')[1] === 'b' ? 'b' : 'w';
     return {
+      ply: index + 1,
       san: entry.san, uci: entry.uci, color,
       /* classifyMove lee `playedUci`; sin este alias la lista de jugadas no
          reconocia ninguna «la mejor» y el informe si, y no cuadraban. */
@@ -626,7 +631,7 @@ export function mount(root, ctx, params = {}) {
 
     setThinking(false);
     storeEval(atPly, fen, analysis);
-    if (atPly !== ply) return;
+    if (atPly !== ply || destroyed) return;
 
     engineDepth.textContent = `profundidad ${analysis.depth || 0} · ${formatNodes(analysis.nodes)} nodos`;
     renderLines(analysis);
@@ -638,6 +643,9 @@ export function mount(root, ctx, params = {}) {
   function storeEval(index, fen, analysis) {
     const best = analysis && analysis.lines && analysis.lines[0];
     if (!best) return;
+    /* La respuesta del motor llega tarde: si la línea cambió por el camino,
+       este índice ya es de otra posición y guardarla ahí sería mentir. */
+    if (fenAt(index) !== fen) return;
     const second = analysis.lines[1] || null;
     evals[index] = {
       cp: typeof best.score === 'number' ? best.score : 0,
@@ -662,13 +670,20 @@ export function mount(root, ctx, params = {}) {
   }
 
   /** Walk the whole line scoring every position, so each move gets a verdict. */
+  /** Para el repaso completo, si lo hay. Devuelve true si había alguno. */
+  function detenerRepaso(motivo) {
+    if (!fullRun) return false;
+    fullRun.cancelled = true;
+    fullRun = null;
+    safeStop();
+    fullButton.lastChild.textContent = 'Analizar toda la partida';
+    fullProgress.textContent = motivo || 'análisis interrumpido';
+    renderReport(null);
+    return true;
+  }
+
   async function toggleFullAnalysis() {
-    if (fullRun) {
-      fullRun.cancelled = true;
-      fullRun = null;
-      safeStop();
-      fullButton.lastChild.textContent = 'Analizar toda la partida';
-      fullProgress.textContent = 'análisis interrumpido';
+    if (detenerRepaso('análisis interrumpido')) {
       scheduleAnalysis(0);
       return;
     }

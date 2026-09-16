@@ -473,7 +473,13 @@ function gamePayload(game, viewerId = null) {
     private: game.private,
     category: game.category,
     status: game.status,
-    clocks: { w: Math.round(game.clocks.w), b: Math.round(game.clocks.b) },
+    /* Descontando lo que lleva pensado el que mueve. Mandarlo en crudo hacia
+       que quien recargaba la pagina viera de mas todo el tiempo gastado en ese
+       turno, y le cayera la bandera con segundos todavia en pantalla. */
+    clocks: {
+      w: Math.max(0, Math.round(remaining(game, 'w'))),
+      b: Math.max(0, Math.round(remaining(game, 'b'))),
+    },
     moves: game.uciMoves.slice(),
     sanMoves: game.sanMoves.slice(),
     moveNumber: game.pos.fullmove,
@@ -1060,6 +1066,20 @@ function handleJoin(client, user, msg) {
     /* Already under way: the only sensible reading of "join" is to watch. */
     if (playerColor(game, user.id)) {
       client.send({ t: 'gameStart', game: gamePayload(game, user.id) });
+      /* Si ya termino hay que decirlo. Sin esto, quien recargaba la pagina de
+         una partida acabada veia el tablero vivo, con los botones de rendirse
+         y tablas, y podia seguir "jugando" contra un servidor que rechazaba
+         cada jugada en silencio. */
+      if (game.status === 'over') {
+        client.send({
+          t: 'gameOver',
+          gameId: game.id,
+          result: game.result,
+          reason: game.reason,
+          ratings: game.ratings,
+          pgn: game.pgn,
+        });
+      }
       return;
     }
     fail(client, 'gameFull');

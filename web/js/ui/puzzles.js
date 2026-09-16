@@ -31,8 +31,10 @@ function colorOf(fen) {
 function sanOf(fen, uci) {
   try {
     const pos = createPosition(fen);
+    /* uciToMove devuelve -1 cuando la jugada no es legal ahí, y -1 es
+       «verdadero»: comprobarlo como si fuera nulo no protege de nada. */
     const move = uciToMove(pos, uci);
-    return move ? moveToSan(pos, move) : uci;
+    return move > 0 ? moveToSan(pos, move) : uci;
   } catch {
     return uci;
   }
@@ -65,6 +67,13 @@ function legalMapOf(fen) {
   return mapa;
 }
 
+/** Centipeones utilizables: un mate se acota, no vale 30000. */
+function acotarCp(info) {
+  if (!info) return 0;
+  if (info.mate !== null && info.mate !== undefined) return info.mate > 0 ? 3000 : -3000;
+  return Math.max(-3000, Math.min(3000, Number(info.cp) || 0));
+}
+
 function legalCountOf(fen) {
   try {
     return generateMoves(createPosition(fen), { legal: true }).length;
@@ -87,6 +96,11 @@ export function mount(root, ctx, params = {}) {
   let resuelto = false;       // ya se cerró (acertado o no)
   let usoPista = false;
   let esperandoRespuesta = false;   // el rival está contestando: no toques nada
+  /* Sube con cada problema y con cada cambio de pestaña. Comparar `problema`
+     con `solver.puzzle` no servía de guarda: se reasignan juntos, así que la
+     condición era siempre falsa y la respuesta del rival de un problema podía
+     caer sobre el siguiente. */
+  let generacion = 0;
   const tanda = [];
 
   clear(root);
@@ -204,6 +218,7 @@ export function mount(root, ctx, params = {}) {
   }
 
   function cargar(p) {
+    generacion += 1;
     problema = p;
     solver = createSolver(p);
     resuelto = false;
@@ -247,8 +262,9 @@ export function mount(root, ctx, params = {}) {
     if (res.reply) {
       esperandoRespuesta = true;
       refrescarTablero();
+      const mia = generacion;
       setTimeout(() => {
-        if (destroyed || problema !== solver.puzzle) return;
+        if (destroyed || mia !== generacion) return;
         aplicar(res.reply);
         esperandoRespuesta = false;
         if (solver.solved()) {
@@ -270,7 +286,9 @@ export function mount(root, ctx, params = {}) {
     const fen = board.getFen();
     const pos = createPosition(fen);
     const move = uciToMove(pos, uci);
-    if (!move) return;
+    /* -1 es lo que devuelve cuando la jugada no es legal en esta posición, y
+       es «verdadero»: pasárselo a makeMove corrompía el tablero entero. */
+    if (move <= 0) return;
     makeMove(pos, move);
     /* El tablero quiere {from, to}: con una lista, renderMarks reventaba al
        pintar la ultima jugada y se llevaba por delante toda la interaccion. */
@@ -282,7 +300,7 @@ export function mount(root, ctx, params = {}) {
   }
 
   function cerrar(acertado) {
-    if (resuelto) return;
+    if (resuelto || !problema) return;
     resuelto = true;
     esperandoRespuesta = false;
     refrescarTablero();
@@ -311,9 +329,12 @@ export function mount(root, ctx, params = {}) {
     } else {
       stats.failed = (stats.failed || 0) + 1;
       stats.currentStreak = 0;
-      veredicto.textContent = `La buena era ${sanOf(problema.fen, problema.moves[0])}. ${delta}`;
+      const buena = problema.moves?.[0] || null;
+      veredicto.textContent = buena
+        ? `La buena era ${sanOf(problema.fen, buena)}. ${delta}`
+        : `No era esa. ${delta}`;
       ctx.sound?.play?.('lose');
-      board.drawArrow(problema.moves[0].slice(0, 2), problema.moves[0].slice(2, 4), 'var(--accent)');
+      if (buena) board.drawArrow(buena.slice(0, 2), buena.slice(2, 4), 'var(--accent)');
     }
 
     try {
@@ -343,7 +364,7 @@ export function mount(root, ctx, params = {}) {
   }
 
   function rendirse() {
-    if (!solver || resuelto) return;
+    if (!solver || resuelto || !problema?.moves?.length) return;
     const linea = solver.giveUp();
     veredicto.textContent = `Era ${sanOf(problema.fen, linea[0])}.`;
     board.drawArrow(linea[0].slice(0, 2), linea[0].slice(2, 4), 'var(--accent)');
@@ -352,7 +373,10 @@ export function mount(root, ctx, params = {}) {
   }
 
   function siguiente() {
-    const p = pickPuzzle(pool, { rating: stats.rating || STARTING_PUZZLE_RATING, recent: stats.recent || [] });
+    /* El que está puesto también cuenta como visto: si no, pulsar «Siguiente»
+       sin intentarlo podía devolver el mismo una y otra vez. */
+    const vistos = [problema?.id, ...(stats.recent || [])].filter(Boolean);
+    const p = pickPuzzle(pool, { rating: stats.rating || STARTING_PUZZLE_RATING, recent: vistos });
     if (!p) {
       veredicto.textContent = 'No quedan problemas de esta fuente.';
       return;
@@ -377,9 +401,12 @@ export function mount(root, ctx, params = {}) {
   }
 
   async function prepararPropias() {
+    const mia = ++generacion;
     avisoCard.classList.remove('hidden');
     clear(aviso);
-    const partidas = loadGames(12).filter((g) => typeof g.pgn === 'string' && g.pgn.length > 20);
+    const partidas = loadGames(12)
+      .filter((g) => typeof g.pgn === 'string' && g.pgn.length > 20)
+      .filter((g) => g.myColor === 'w' || g.myColor === 'b');
     if (!partidas.length) {
       aviso.appendChild(emptyState(
         'Todavía no hay partidas tuyas guardadas. Jugá una contra un bot o por internet y volvé: los errores que cometas se convierten en problemas.'));
@@ -391,7 +418,8 @@ export function mount(root, ctx, params = {}) {
 
     const encontrados = [];
     for (let i = 0; i < partidas.length && encontrados.length < 25; i++) {
-      if (destroyed) return;
+      /* Si cambiaste de pestaña o pediste otro problema, esto ya no interesa. */
+      if (destroyed || mia !== generacion) return;
       progreso.textContent = `Repasando tus partidas… ${i + 1} de ${partidas.length}`;
       try {
         const nuevos = await problemasDePartida(partidas[i]);
@@ -400,7 +428,7 @@ export function mount(root, ctx, params = {}) {
         /* Una partida que falle no corta el repaso. */
       }
     }
-    if (destroyed) return;
+    if (destroyed || mia !== generacion) return;
 
     clear(aviso);
     if (!encontrados.length) {
@@ -479,17 +507,26 @@ export function mount(root, ctx, params = {}) {
       const winAfter = 100 - winPercentOf(despues);
       hechos.push({
         ...linea[i],
+        /* El ply de verdad: la lista lleva huecos y numerar por posición
+           descolocaba el «jugada N» de cada problema. */
+        ply: i + 1,
         winBefore, winAfter,
         bestUci: antes.bestUci, bestSan: antes.bestSan,
         legalCount: legalCountOf(linea[i].fenBefore),
         sacrifice: isSacrifice(linea[i].fenBefore, linea[i].fenAfter, linea[i].color),
-        cpLoss: Math.max(0, (antes.cp || 0) - (-(despues.cp || 0))),
+        /* Un mate vale ±30000 en el motor; metido en una resta da pérdidas de
+           decenas de miles que se comen cualquier orden y cualquier escala. */
+        cpLoss: Math.max(0, acotarCp(antes) - (-acotarCp(despues))),
       });
     }
 
     const informe = buildReport(hechos);
-    /* Solo los errores del lado que jugó la persona. */
-    const miColor = registro.myColor === 'b' ? 'b' : 'w';
+    /* Solo los errores del lado que jugó la persona. Las partidas guardadas
+       antes de que se apuntara el color no lo dicen, y dar por hecho «blancas»
+       te hacía entrenar los errores del RIVAL con tu nombre encima. Sin el
+       dato, esa partida no sirve. */
+    if (registro.myColor !== 'w' && registro.myColor !== 'b') return [];
+    const miColor = registro.myColor;
     const mios = informe.moves.filter((m) => m.color === miColor);
     return puzzlesFromReport(mios, {
       gameId: registro.id,
@@ -506,7 +543,9 @@ export function mount(root, ctx, params = {}) {
   return {
     unmount() {
       destroyed = true;
-      try { ctx.ai?.stop?.(); } catch { /* el motor ya estaba parado */ }
+      /* ctx.ai es perezoso: pedirlo para pararlo arrancaba los workers justo
+         al salir de la pantalla. */
+      if (ctx.hasAi?.()) { try { ctx.ai.stop(); } catch { /* ya estaba parado */ } }
       board.destroy();
       clear(root);
     },

@@ -80,8 +80,9 @@ function dificultad({ plies, tranquila, ventaja, mate }) {
 function acabaEnMate(fen, linea) {
   const pos = C.createPosition(fen);
   for (const uci of linea) {
+    /* uciToMove devuelve -1, que es «verdadero». */
     const move = C.uciToMove(pos, uci);
-    if (!move) return false;
+    if (move <= 0) return false;
     C.makeMove(pos, move);
   }
   const r = C.gameResult(pos);
@@ -122,7 +123,7 @@ function partida(semilla) {
     }
     if (!jugada || !jugada.uci) break;
     const move = C.uciToMove(pos, jugada.uci);
-    if (!move) break;
+    if (move <= 0) break;
     C.makeMove(pos, move);
     historia.push(jugada.uci);
   }
@@ -180,7 +181,7 @@ function main() {
 
       const pos = C.createPosition(fen);
       const primera = C.uciToMove(pos, linea[0]);
-      if (!primera) continue;
+      if (primera <= 0) continue;
 
       const esMate = hondo.mejor.mate !== null && hondo.mejor.mate !== undefined;
       const problema = {

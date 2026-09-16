@@ -153,6 +153,31 @@ export function estimateRating(accuracy, acpl) {
   return Math.max(250, Math.min(2900, Math.round(mezcla / 25) * 25));
 }
 
+/**
+ * Precisión de un bando en una partida en vivo, a partir de las evaluaciones
+ * por ply: `evals[p]` es la evaluación en centipeones, desde las blancas,
+ * DESPUÉS del ply p, y `evals[0]` es la posición inicial.
+ *
+ * Los huecos se saltan a propósito. Las evaluaciones llegan del motor de forma
+ * asíncrona y algunas se descartan por el camino, así que la lista tiene
+ * agujeros: contar por posición en la lista en vez de por ply emparejaba cada
+ * jugada con la del rival, y el resumen te daba SU precisión con tu nombre.
+ */
+export function accuracyFromPlyEvals(evals = [], myColor = 'w') {
+  const mia = myColor === 'b' ? -1 : 1;
+  const precisiones = [];
+  for (let ply = 1; ply < evals.length; ply++) {
+    /* El ply 1 lo juegan las blancas, el 2 las negras, y así. */
+    const fueMia = (ply % 2 === 1) === (myColor !== 'b');
+    if (!fueMia) continue;
+    const antes = evals[ply - 1];
+    const despues = evals[ply];
+    if (!Number.isFinite(antes) || !Number.isFinite(despues)) continue;
+    precisiones.push(moveAccuracy(winPercent(antes * mia), winPercent(despues * mia)));
+  }
+  return precisiones.length >= 2 ? gameAccuracy(precisiones) : null;
+}
+
 /* -------------------------------- fases ---------------------------------- */
 
 const VALOR_PIEZA = { p: 1, n: 3, b: 3, r: 5, q: 9 };
@@ -231,7 +256,13 @@ export function buildReport(moves = []) {
     lado.clases[clase] = (lado.clases[clase] || 0) + 1;
 
     entradas.push({
-      ply: i + 1, san: m.san || '', uci: m.uci || null, color,
+      /* El ply lo manda quien arma los hechos: la lista que llega aquí puede
+         venir filtrada —una posición que el motor no llegó a evaluar— y
+         numerar por posición en el array corría todas las jugadas siguientes.
+         Se notaba en los «momentos que decidieron»: decían una jugada y al
+         pulsarlas llevaban a otra. */
+      ply: Number.isFinite(m.ply) ? m.ply : i + 1,
+      san: m.san || '', uci: m.uci || null, color,
       /* La posicion viaja con la jugada: de ahi salen los problemas de
          entrenamiento, y buscarla luego por el SAN no era de fiar. */
       fenBefore: m.fenBefore || null, fenAfter: m.fenAfter || null,

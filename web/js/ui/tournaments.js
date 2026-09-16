@@ -581,7 +581,9 @@ export function mount(root, ctx, params = {}) {
   return {
     unmount() {
       destroyed = true;
-      try { ctx.ai?.stop?.(); } catch { /* el motor ya estaba parado */ }
+      /* ctx.ai es perezoso: pedirlo para pararlo arrancaba los workers justo
+         al salir de la pantalla. */
+      if (ctx.hasAi?.()) { try { ctx.ai.stop(); } catch { /* ya estaba parado */ } }
       clear(root);
     },
   };

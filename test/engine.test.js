@@ -386,4 +386,50 @@ test('ve las tablas por material insuficiente y el desprecio las tuerce', () => 
   assertEqual(despreciativo.score, -100, 'con desprecio 100 las tablas valen -100');
 });
 
+/* ------------------- lo que la busqueda deja saber ---------------------- */
+
+test('cada jugada de raíz dice si su puntuación es exacta o una cota', () => {
+  /* El sondeo de ventana nula que falla bajo solo demuestra «no supera a la
+     mejor», y su número se queda pegado al de la mejor. Quien reparte entre
+     jugadas TIENE que poder distinguirlas: sin esta marca, un bot de 1900 veía
+     veinticuatro jugadas que parecían valer casi lo mismo y elegía entre ellas
+     casi al azar, incluidas las que cuelgan una pieza. */
+  const searcher = createSearcher();
+  const pos = createPosition('r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4');
+  const r = searcher.searchRoot(pos, { depth: 6, timeMs: 4000, exactRootScores: 3 });
+
+  assert(Array.isArray(r.moves) && r.moves.length > 5, 'devuelve las jugadas de raíz');
+  for (const m of r.moves) {
+    assert(typeof m.exact === 'boolean',
+      'la marca tiene que llegar hasta aquí, y llegó como ' + typeof m.exact);
+  }
+  const exactas = r.moves.filter((m) => m.exact).length;
+  assert(exactas >= 1 && exactas <= 4,
+    'con exactRootScores 3 tienen que ser unas pocas, y son ' + exactas + ' de ' + r.moves.length);
+  assert(exactas < r.moves.length, 'y desde luego no todas');
+});
+
+test('pidiéndolas todas exactas, todas lo dicen', () => {
+  const searcher = createSearcher();
+  const pos = createPosition('r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4');
+  const r = searcher.searchRoot(pos, { depth: 5, timeMs: 4000, exactRootScores: true });
+  assertEqual(r.moves.filter((m) => m.exact).length, r.moves.length,
+    'con todas exactas no puede quedar ninguna marcada como cota');
+});
+
+test('una cota nunca supera a la puntuación de verdad de la mejor', () => {
+  /* Lo que hace peligrosas a las cotas: se quedan pegadas por debajo de la
+     mejor, así que parecen jugadas casi tan buenas como ella. */
+  const searcher = createSearcher();
+  const pos = createPosition('r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4');
+  const r = searcher.searchRoot(pos, { depth: 6, timeMs: 4000, exactRootScores: 2 });
+  const mejor = r.moves[0];
+  assert(mejor.exact, 'la mejor siempre se puntúa de verdad');
+  for (const m of r.moves) {
+    if (m.exact) continue;
+    assert(m.score <= mejor.score,
+      'una cota no puede salir por encima de la mejor: ' + m.score + ' contra ' + mejor.score);
+  }
+});
+
 run('engine.js');

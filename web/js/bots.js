@@ -25,6 +25,11 @@ const VALUES = [0, 100, 325, 335, 500, 975, 0];
 /* Por debajo de esto una puntuacion es "me dan mate": nunca se elige a drede. */
 const LOST_SCORE = -20000;
 
+/** La tasa de error a proposito de un perfil, acotada. */
+function blunderRateDe(profile) {
+  return clamp(Number(profile && profile.blunderRate) || 0, 0, 1);
+}
+
 function clamp(value, min, max) {
   if (value < min) return min;
   if (value > max) return max;
@@ -161,13 +166,24 @@ export function chooseBotMove(rootMoves, profile, rng, ctx = {}) {
   const moveNumber = Number(ctx.moveNumber) || 1;
   const losing = Number(ctx.materialDiff) < -150;
 
-  /* Fuera de la ventana no se elige en juego normal: eso es un error gordo y
-     tiene su propio camino mas abajo. */
+  /* Fuera de la ventana no se elige en juego NORMAL. El error a proposito es
+     otra cosa y necesita ver todas las jugadas bien puntuadas: reducir la
+     lista antes dejaba ese camino sin candidatos, y de 1700 para arriba no
+     disparaba nunca por mucho que su tasa dijera lo contrario. */
   const ventana = Math.max(20, Number(profile && profile.choiceWindow) || 9999);
   const tope = Math.max(...rootMoves.map((e) => Number(e.score) || 0));
   const dentro = rootMoves.filter((e) => (Number(e.score) || 0) >= tope - ventana);
-  if (dentro.length === 1) return dentro[0].move;
-  rootMoves = dentro.length ? dentro : rootMoves;
+  const candidatasNormales = dentro.length ? dentro : rootMoves;
+  if (candidatasNormales.length === 1 && blunderRateDe(profile) === 0) {
+    return candidatasNormales[0].move;
+  }
+
+  const todas = rootMoves.map((entry) => ({
+    move: entry.move,
+    score: Number(entry.score) || 0,
+  }));
+
+  rootMoves = candidatasNormales;
 
   const scored = rootMoves.map((entry) => {
     const score = Number(entry.score) || 0;
@@ -184,11 +200,13 @@ export function chooseBotMove(rootMoves, profile, rng, ctx = {}) {
   }
 
   /* El error deliberado: una jugada mala pero de las que se juegan de verdad,
-     nunca un disparate ni meterse en un mate. */
+     nunca un disparate ni meterse en un mate. Mira TODAS las bien puntuadas,
+     no solo las de la ventana: si no, nunca encontraria ninguna lo bastante
+     mala. */
   if (blunderRate > 0 && random() < blunderRate) {
-    const floor = best.score - 650;
-    const ceiling = best.score - 90;
-    const candidates = scored.filter((entry) => entry !== best &&
+    const floor = tope - 650;
+    const ceiling = tope - 90;
+    const candidates = todas.filter((entry) => entry.move !== best.move &&
       entry.score >= floor && entry.score <= ceiling && entry.score > LOST_SCORE);
     if (candidates.length > 0) {
       /* Entre las malas, la que mas entra por los ojos. */
