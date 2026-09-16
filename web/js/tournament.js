@@ -44,6 +44,23 @@ function scoreFromResult(result, color) {
   return null;
 }
 
+/**
+ * Un número estable a partir de la semilla del torneo y un identificador. Con
+ * esto la semilla deja de ser un mando desconectado: decide los empates —el
+ * orden entre iguales, a quién le toca el bye, de qué color se juega cuando da
+ * lo mismo—, y dos torneos con los mismos participantes y distinta semilla ya
+ * no salen calcados. No hace falta guardar nada: sale del propio dato.
+ */
+function seedKey(t, id) {
+  let h = (Number(t && t.seed) || 1) >>> 0;
+  const s = String(id || '');
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
 /** PRNG determinista (mulberry32) con el estado guardado en el torneo. */
 function nextRandom(t) {
   t.rngState = (t.rngState + 0x6d2b79f5) >>> 0;
@@ -280,6 +297,12 @@ function computeStats(t) {
       if (white) {
         white.points += byePoints(t.format);
         white.byes += 1;
+        /* La FIDE cuenta el descanso como un rival virtual con la puntuacion
+           del propio jugador. Sin eso, la ronda del bye no aportaba nada al
+           Buchholz ni al Sonneborn-Berger y quien descansaba quedaba siempre
+           por debajo en los dos desempates. Se apunta aparte y se resuelve al
+           final, cuando ya se sabe cuantos puntos hizo. */
+        white.virtualByes = (white.virtualByes || 0) + 1;
       }
       continue;
     }
@@ -335,7 +358,7 @@ function colorAllowed(whiteEntry, blackEntry, limits) {
 }
 
 /** Decide colores para un emparejamiento aplicando las restricciones del nivel. */
-function assignColors(a, b, stats, level, round) {
+function assignColors(a, b, stats, level, round, t) {
   const sa = stats.get(a.id);
   const sb = stats.get(b.id);
   const limits = colorLimits(level);
@@ -350,6 +373,12 @@ function assignColors(a, b, stats, level, round) {
   const la = sa.colors[sa.colors.length - 1];
   const lb = sb.colors[sb.colors.length - 1];
   if (la !== lb) return la === 'b' ? { white: a, black: b } : { white: b, black: a };
+  /* Ni el historial ni el equilibrio deciden: que lo decida la semilla, y no
+     la paridad de la ronda, que hacia que todos los empates de una misma ronda
+     cayeran del mismo lado. */
+  const ka = seedKey(t, a.id + '|' + round);
+  const kb = seedKey(t, b.id + '|' + round);
+  if (ka !== kb) return ka < kb ? { white: a, black: b } : { white: b, black: a };
   return round % 2 === 1 ? { white: a, black: b } : { white: b, black: a };
 }
 
@@ -392,7 +421,7 @@ function candidateOrder(pool, used, index, stats, level) {
  * Niveles 0 a 2: nunca se repite rival y las restricciones de color se van relajando.
  * Nivel 3: ultimo recurso, se permite repetir rival (primero quien menos veces se enfrento).
  */
-function backtrackPairing(pool, stats, level, round) {
+function backtrackPairing(pool, stats, level, round, t) {
   const n = pool.length;
   const used = new Array(n).fill(false);
   const pairs = [];
@@ -411,7 +440,7 @@ function backtrackPairing(pool, stats, level, round) {
       if (budget.left <= 0) return false;
       const rival = pool[j];
       if (level < 3 && timesPlayed(stats, me.id, rival.id) > 0) continue;
-      const colors = assignColors(me, rival, stats, level, round);
+      const colors = assignColors(me, rival, stats, level, round, t);
       if (!colors) continue;
       used[i] = true;
       used[j] = true;
@@ -427,20 +456,24 @@ function backtrackPairing(pool, stats, level, round) {
   return solve(0) ? pairs.slice() : null;
 }
 
-/** Bye para el jugador con menos puntos que aun no lo tuvo (desempate: menos Elo). */
-function chooseByePlayer(pool, stats) {
-  let minByes = Infinity;
-  for (const p of pool) minByes = Math.min(minByes, stats.get(p.id).byes);
-  const candidates = pool.filter((p) => stats.get(p.id).byes === minByes);
-  let best = candidates[0];
-  for (const p of candidates) {
+/**
+ * Candidatos al descanso, del mas apropiado al menos: primero quien menos ha
+ * descansado, luego quien menos puntos lleva, luego el de menos Elo. Antes solo
+ * se miraba el primero de la lista.
+ */
+function byeCandidates(pool, stats) {
+  return pool.slice().sort((p, q) => {
     const a = stats.get(p.id);
-    const b = stats.get(best.id);
-    if (a.points < b.points) best = p;
-    else if (a.points === b.points && p.elo < best.elo) best = p;
-    else if (a.points === b.points && p.elo === best.elo && p.seed > best.seed) best = p;
-  }
-  return best;
+    const b = stats.get(q.id);
+    if (a.byes !== b.byes) return a.byes - b.byes;
+    if (a.points !== b.points) return a.points - b.points;
+    if (p.elo !== q.elo) return p.elo - q.elo;
+    return q.seed - p.seed;
+  });
+}
+
+function chooseByePlayer(pool, stats) {
+  return byeCandidates(pool, stats)[0];
 }
 
 function rankedPool(t, stats) {
@@ -449,27 +482,70 @@ function rankedPool(t, stats) {
     const sb = stats.get(b.id);
     if (sb.points !== sa.points) return sb.points - sa.points;
     if (b.elo !== a.elo) return b.elo - a.elo;
+    /* Entre iguales manda la semilla, no el orden de inscripcion. */
+    const ka = seedKey(t, a.id);
+    const kb = seedKey(t, b.id);
+    if (ka !== kb) return ka - kb;
     return a.seed - b.seed;
   });
 }
 
+/** Los candidatos al bye agrupados por cuantas veces ya descansaron. */
+function byeTiers(pool, stats) {
+  const tandas = [];
+  for (const p of byeCandidates(pool, stats)) {
+    const veces = stats.get(p.id).byes;
+    const ultima = tandas[tandas.length - 1];
+    if (ultima && ultima.veces === veces) ultima.gente.push(p);
+    else tandas.push({ veces, gente: [p] });
+  }
+  return tandas;
+}
+
 function swissPairings(t, round) {
   const stats = computeStats(t);
-  let pool = rankedPool(t, stats);
-  const pairings = [];
-  let byePlayer = null;
-  if (pool.length % 2 === 1) {
-    byePlayer = chooseByePlayer(pool, stats);
-    pool = pool.filter((p) => p.id !== byePlayer.id);
+  const ranked = rankedPool(t, stats);
+  const armar = (matching, byePlayer) => {
+    const pairings = matching.map((par) => ({ white: par.white.id, black: par.black.id, bye: false }));
+    if (byePlayer) pairings.push({ white: byePlayer.id, black: null, bye: true });
+    return pairings;
+  };
+
+  if (ranked.length % 2 === 0) {
+    for (let level = 0; level <= 3; level += 1) {
+      const matching = backtrackPairing(ranked, stats, level, round, t);
+      if (matching) return armar(matching, null);
+    }
+    throw new Error('No se pudo emparejar la ronda ' + round + '.');
   }
-  let matching = null;
-  for (let level = 0; level <= 3 && !matching; level += 1) {
-    matching = backtrackPairing(pool, stats, level, round);
+
+  /* Con la gente impar, a quien le toque descansar cambia con quien puede
+     jugar contra quien. Antes se elegia UN candidato y, si con ese no salia el
+     emparejamiento, se relajaban las reglas hasta permitir repetir rival —
+     aunque dandole el descanso al siguiente de la lista saliera limpio.
+     El orden de preferencias, de mas a menos importante:
+       1. que nadie repita rival     (niveles 0 a 2)
+       2. que nadie descanse dos veces mientras quede quien no descanso
+       3. que los colores queden equilibrados  (nivel dentro de cada tanda)
+     Repetir rival, el nivel 3, queda para cuando ya no hay nada que hacer. */
+  const tandas = byeTiers(ranked, stats);
+  for (const tanda of tandas) {
+    for (let level = 0; level <= 2; level += 1) {
+      for (const byePlayer of tanda.gente) {
+        const pool = ranked.filter((p) => p.id !== byePlayer.id);
+        const matching = backtrackPairing(pool, stats, level, round, t);
+        if (matching) return armar(matching, byePlayer);
+      }
+    }
   }
-  if (!matching) throw new Error('No se pudo emparejar la ronda ' + round + '.');
-  for (const pair of matching) pairings.push({ white: pair.white.id, black: pair.black.id, bye: false });
-  if (byePlayer) pairings.push({ white: byePlayer.id, black: null, bye: true });
-  return pairings;
+  for (const tanda of tandas) {
+    for (const byePlayer of tanda.gente) {
+      const pool = ranked.filter((p) => p.id !== byePlayer.id);
+      const matching = backtrackPairing(pool, stats, 3, round, t);
+      if (matching) return armar(matching, byePlayer);
+    }
+  }
+  throw new Error('No se pudo emparejar la ronda ' + round + '.');
 }
 
 function arenaPairings(t, round) {
@@ -505,7 +581,7 @@ function arenaPairings(t, round) {
     if (pick < 0) break;
     const rival = pool[pick];
     used.add(rival.id);
-    const colors = assignColors(me, rival, stats, 2, round);
+    const colors = assignColors(me, rival, stats, 2, round, t);
     pairings.push({ white: colors.white.id, black: colors.black.id, bye: false });
   }
   if (byePlayer) pairings.push({ white: byePlayer.id, black: null, bye: true });
@@ -719,9 +795,16 @@ export function standings(t) {
   const rows = t.players.map((p) => {
     const s = stats.get(p.id);
     const oppPoints = s.opponents.map(pointsOf);
+    /* El descanso cuenta como rival virtual con la puntuacion del propio
+       jugador, que es como lo hace la FIDE. Sin esto la ronda del bye no
+       aportaba nada y quien descansaba quedaba sistematicamente por debajo en
+       los dos desempates, castigado por algo que no eligio. */
+    const virtuales = s.virtualByes || 0;
+    for (let i = 0; i < virtuales; i += 1) oppPoints.push(s.points);
     const buchholz = oppPoints.reduce((sum, v) => sum + v, 0);
     const buchholzCut = oppPoints.length > 0 ? buchholz - Math.min(...oppPoints) : 0;
-    const sonneborn = s.results.reduce((sum, r) => sum + r.score * pointsOf(r.opponent), 0);
+    const sonneborn = s.results.reduce((sum, r) => sum + r.score * pointsOf(r.opponent), 0)
+      + virtuales * byePoints(t.format) * s.points;
     const performance = s.played > 0 ? performanceRating(s.oppRatings, s.gamePoints) : p.elo;
     return {
       playerId: p.id,

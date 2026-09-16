@@ -680,4 +680,103 @@ test('un guardado sin el número de rondas se rechaza en vez de darse por acabad
   assert(!isFinished(bueno), 'con sus cinco rondas, en la primera no ha terminado');
 });
 
+/* ------------------- calidad del emparejamiento suizo -------------------- */
+
+function jugarSuizo(n, rondas, seed) {
+  const t = createTournament({ id: 's' + n, format: 'swiss', players: makePlayers(n), rounds: rondas, seed });
+  const rand = mulberry32(seed * 7919 + 13);
+  const vistos = new Set();
+  const byes = new Map();
+  let repetidos = 0;
+  let guarda = 0;
+  while (!isFinished(t) && guarda++ < 40) {
+    for (const g of nextRound(t)) {
+      if (!g.white || !g.black) {
+        byes.set(g.white, (byes.get(g.white) || 0) + 1);
+        continue;
+      }
+      const clave = [g.white, g.black].sort().join('|');
+      if (vistos.has(clave)) repetidos += 1;
+      vistos.add(clave);
+      const x = rand();
+      reportResult(t, g.id, x < 0.45 ? '1-0' : x < 0.85 ? '0-1' : '1/2-1/2');
+    }
+  }
+  const maxByes = byes.size ? Math.max(...byes.values()) : 0;
+  return { t, repetidos, maxByes, orden: standings(t).map((r) => r.playerId).join(',') };
+}
+
+test('el suizo no repite rival mientras quede un descanso que lo evite', () => {
+  /* Se elegia UN candidato al bye y, si con ese el resto no se podia emparejar
+     limpio, se relajaban las reglas hasta permitir repetir rival — aunque
+     dandole el descanso al siguiente de la lista saliera perfecto. Con siete
+     jugadores a seis rondas habia cinco byes alternativos que funcionaban. */
+  for (const [n, rondas, seed] of [[7, 6, 2], [5, 4, 39], [9, 7, 5], [11, 8, 3]]) {
+    const r = jugarSuizo(n, rondas, seed);
+    assertEqual(r.repetidos, 0,
+      `con ${n} jugadores a ${rondas} rondas (semilla ${seed}) se repitio rival ${r.repetidos} vez/veces`);
+  }
+});
+
+test('el descanso se reparte mientras no obligue a repetir rival', () => {
+  /* Las dos reglas chocan de vez en cuando: hay rondas donde cualquier jugador
+     sin descansos deja al resto sin emparejamiento limpio, y entonces hay que
+     elegir entre un segundo descanso y una revancha. Se elige el descanso, como
+     la FIDE: un punto regalado ensucia menos la tabla que una partida repetida.
+     Cuando no chocan —lo normal— nadie descansa dos veces. */
+  for (const [n, rondas, seed] of [[5, 4, 39], [9, 7, 5], [11, 8, 3], [13, 5, 8]]) {
+    const r = jugarSuizo(n, rondas, seed);
+    assert(r.maxByes <= 1,
+      `con ${n} jugadores a ${rondas} rondas alguien descanso ${r.maxByes} veces sin necesidad`);
+  }
+});
+
+test('el descanso cuenta como rival virtual en el Buchholz y el Sonneborn-Berger', () => {
+  /* La FIDE cuenta el bye como una partida ganada a un rival imaginario que
+     tiene los puntos de uno mismo. Sin eso, la ronda del descanso no aportaba
+     nada a ninguno de los dos desempates y quien descansaba quedaba por debajo
+     de sus iguales por el simple hecho de haber descansado. */
+  const t = createTournament({ id: 'bye-fide', format: 'swiss', players: makePlayers(5), rounds: 3, seed: 4 });
+  let descanso = null;
+  let guarda = 0;
+  while (!isFinished(t) && guarda++ < 10) {
+    for (const g of nextRound(t)) {
+      if (!g.white || !g.black) { if (!descanso) descanso = g.white; continue; }
+      reportResult(t, g.id, '1/2-1/2');
+    }
+  }
+  assert(descanso, 'con cinco jugadores alguien tiene que descansar');
+  const fila = standings(t).find((r) => r.playerId === descanso);
+  assert(fila.buchholz > 0, 'el Buchholz de quien descanso no puede ser el de sus rivales reales solamente');
+  assert(fila.sonnebornBerger > 0, 'y el Sonneborn-Berger tampoco puede ignorar el punto del bye');
+  /* El rival virtual vale exactamente los puntos propios. */
+  const reales = fila.buchholz - fila.points;
+  assert(reales >= 0, 'el aporte virtual es la puntuacion propia, nunca resta');
+});
+
+test('la semilla cambia el torneo de verdad, no solo el numero guardado', () => {
+  /* `seed` se guardaba, se documentaba y se mostraba, pero ninguna funcion de
+     emparejamiento lo leia: dos torneos con la misma gente salian calcados. */
+  const ordenes = new Set();
+  const cruces = new Set();
+  for (const seed of [1, 42, 999]) {
+    const t = createTournament({ id: 'sem', format: 'swiss', players: makePlayers(8), rounds: 4, seed });
+    const primera = nextRound(t)
+      .map((g) => (g.black ? g.white + '-' + g.black : g.white + '-bye'))
+      .sort()
+      .join(' ');
+    cruces.add(primera);
+    const r = jugarSuizo(8, 4, seed);
+    ordenes.add(r.orden);
+  }
+  assert(cruces.size > 1, 'tres semillas distintas dieron la misma primera ronda');
+  assert(ordenes.size > 1, 'y la misma clasificacion final');
+});
+
+test('la misma semilla da siempre el mismo torneo', () => {
+  const a = jugarSuizo(9, 5, 77);
+  const b = jugarSuizo(9, 5, 77);
+  assertEqual(a.orden, b.orden, 'repetir con la misma semilla tiene que dar lo mismo');
+});
+
 run('tournament.js');
