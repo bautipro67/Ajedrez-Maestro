@@ -587,4 +587,97 @@ test('reportResult: valida partidas y resultados', () => {
   assert(threw, 'no se puede reportar dos veces la misma partida');
 });
 
+/* --------------- lo que no se veia hasta que alguien lo busco ------------ */
+
+test('el campeón no depende del orden en que se inscribió la gente', () => {
+  /* Con un triángulo entre los empatados —A gana a B, B a C, C a A— comparar
+     de a dos por el enfrentamiento directo no da ningún orden, y Array.sort
+     devuelve lo que le salga según dónde estuviera cada uno. Con las mismas
+     partidas y los mismos resultados salían tres campeones distintos. */
+  const GANA = {
+    'p1|p2': 'p1', 'p2|p3': 'p2', 'p1|p3': 'p3',
+    'p1|p4': 'p1', 'p2|p4': 'p2', 'p3|p4': 'p4',
+    'p1|p5': 'p1', 'p2|p5': 'p2', 'p3|p5': 'p3', 'p4|p5': 'p4',
+    'p1|p6': 'p1', 'p2|p6': 'p2', 'p3|p6': 'p3', 'p4|p6': 'p4', 'p5|p6': 'p5',
+  };
+  const jugar = (orden) => {
+    const players = orden.map((id, i) => ({ id, name: id, elo: 1500, seed: i }));
+    const t = createTournament({ id: 'ciclo', format: 'roundrobin', players, seed: 7 });
+    let guarda = 0;
+    while (!isFinished(t) && guarda++ < 20) {
+      for (const g of nextRound(t)) {
+        if (!g.white || !g.black) continue;
+        const gana = GANA[[g.white, g.black].sort().join('|')];
+        reportResult(t, g.id, gana === g.white ? '1-0' : '0-1');
+      }
+    }
+    return standings(t).map((r) => r.playerId).join(',');
+  };
+  const base = jugar(['p1', 'p2', 'p3', 'p4', 'p5', 'p6']);
+  for (const orden of [
+    ['p3', 'p1', 'p2', 'p4', 'p5', 'p6'],
+    ['p2', 'p3', 'p1', 'p4', 'p5', 'p6'],
+    ['p6', 'p5', 'p4', 'p3', 'p2', 'p1'],
+  ]) {
+    assertEqual(jugar(orden), base,
+      'inscribiendo en otro orden salió otra clasificación: ' + orden.join(','));
+  }
+});
+
+test('un resultado que no se reconoce no le regala la partida a nadie', () => {
+  /* En computeStats las blancas suman `scoreFromResult(...)`, que es null si el
+     resultado no se entiende, y las negras `1 - null`, que es 1. Unas tablas
+     guardadas como «1/2» se convertían en victoria de las negras, en silencio. */
+  const t = createTournament({ id: 'raro', format: 'roundrobin', players: makePlayers(4), seed: 3 });
+  nextRound(t);
+  const guardado = serialize(t);
+  guardado.games[0].result = '1/2';        // no es '1/2-1/2'
+  guardado.games[1].result = '';           // ni esto
+  const vuelto = deserialize(guardado);
+  assertEqual(vuelto.games[0].result, null, 'la basura vuelve como partida sin jugar');
+  assertEqual(vuelto.games[1].result, null, 'y la cadena vacía también');
+  const tabla = standings(vuelto);
+  for (const fila of tabla) {
+    assertEqual(fila.points, 0, fila.playerId + ' no jugó nada y no puede tener puntos');
+  }
+  assert(pendingGames(vuelto).length >= 2,
+    'y esas partidas tienen que seguir pendientes, no desaparecer del torneo');
+});
+
+test('un guardado sin el calendario o sin el cuadro se rechaza al leerlo', () => {
+  /* Entraba sin protestar y reventaba al pulsar «siguiente ronda», con la
+     pantalla muerta y un TypeError en la consola. */
+  const liga = createTournament({ id: 'l', format: 'roundrobin', players: makePlayers(4), seed: 1 });
+  nextRound(liga);
+  const sinCalendario = serialize(liga);
+  delete sinCalendario.schedule;
+  let fallo = null;
+  try { deserialize(sinCalendario); } catch (err) { fallo = err; }
+  assert(fallo, 'una liga empezada sin calendario tiene que dar error al leerla');
+
+  const cuadro = createTournament({ id: 'k', format: 'knockout', players: makePlayers(4), seed: 1 });
+  nextRound(cuadro);
+  const sinCuadro = serialize(cuadro);
+  delete sinCuadro.knockout;
+  fallo = null;
+  try { deserialize(sinCuadro); } catch (err) { fallo = err; }
+  assert(fallo, 'una eliminatoria empezada sin cuadro también');
+});
+
+test('un guardado sin el número de rondas se rechaza en vez de darse por acabado', () => {
+  const t = createTournament({ id: 'sr', format: 'swiss', players: makePlayers(6), rounds: 5, seed: 2 });
+  for (const g of nextRound(t)) {
+    if (g.white && g.black) reportResult(t, g.id, '1-0');
+  }
+  const guardado = serialize(t);
+  delete guardado.rounds;
+  let fallo = null;
+  try { deserialize(guardado); } catch (err) { fallo = err; }
+  assert(fallo, 'sin el número de rondas hay que decirlo, no dar el torneo por acabado');
+
+  /* Y con el dato, el mismo guardado se lee bien y sigue a medias. */
+  const bueno = deserialize(serialize(t));
+  assert(!isFinished(bueno), 'con sus cinco rondas, en la primera no ha terminado');
+});
+
 run('tournament.js');

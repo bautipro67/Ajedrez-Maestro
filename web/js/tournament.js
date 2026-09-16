@@ -664,6 +664,11 @@ function headToHeadMap(t) {
   return map;
 }
 
+/** Los únicos resultados que significan algo. Cualquier otra cosa es basura. */
+function resultadoValido(valor) {
+  return valor === '1-0' || valor === '0-1' || valor === '1/2-1/2' || valor === 'bye';
+}
+
 function headToHeadCompare(map, aId, bId) {
   const ab = map.get(aId + '|' + bId);
   const ba = map.get(bId + '|' + aId);
@@ -739,12 +744,39 @@ export function standings(t) {
       rank: 0
     };
   });
+  /* El enfrentamiento directo, como criterio de comparar de a dos, NO da un
+     orden: si A le gana a B, B a C y C a A, no hay manera de ordenarlos y
+     Array.sort devuelve lo que le salga segun donde estuviera cada uno, o sea
+     segun el orden en que se inscribio la gente. Con las mismas partidas y los
+     mismos resultados salian tres campeones distintos.
+     La forma correcta —y la que usa la FIDE— es la miniliga: entre los que
+     empatan a puntos, se cuenta lo que sumo cada uno CONTRA ESOS MISMOS. Eso
+     es un numero, asi que ordena siempre igual, y un triangulo se resuelve
+     solo: los tres suman lo mismo y decide el criterio siguiente. */
+  const porPuntos = new Map();
+  for (const row of rows) {
+    const grupo = porPuntos.get(row.points) || [];
+    grupo.push(row);
+    porPuntos.set(row.points, grupo);
+  }
+  for (const grupo of porPuntos.values()) {
+    for (const row of grupo) {
+      let suma = 0;
+      for (const otro of grupo) {
+        if (otro === row) continue;
+        const marcador = h2h.get(row.playerId + '|' + otro.playerId);
+        if (marcador !== undefined) suma += marcador;
+      }
+      row.directScore = round4(suma);
+    }
+  }
+
   rows.sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points;
-    const direct = headToHeadCompare(h2h, a.playerId, b.playerId);
-    if (direct !== 0) return direct;
+    if (b.directScore !== a.directScore) return b.directScore - a.directScore;
     if (b.sonnebornBerger !== a.sonnebornBerger) return b.sonnebornBerger - a.sonnebornBerger;
     if (b.buchholzCut !== a.buchholzCut) return b.buchholzCut - a.buchholzCut;
+    if (b.buchholz !== a.buchholz) return b.buchholz - a.buchholz;
     if (b.wins !== a.wins) return b.wins - a.wins;
     if (b.performance !== a.performance) return b.performance - a.performance;
     return a.seed - b.seed;
@@ -850,6 +882,24 @@ export function serialize(t) {
 export function deserialize(obj) {
   if (!obj || typeof obj !== 'object') throw new Error('Datos de torneo no validos.');
   if (!FORMATS.includes(obj.format)) throw new Error('Formato de torneo desconocido: ' + obj.format);
+  /* Un guardado al que le falta el calendario (liga) o el cuadro
+     (eliminatoria) entraba sin protestar y reventaba al pulsar «siguiente
+     ronda», con un TypeError y la pantalla muerta. Mejor decirlo aqui. */
+  if (obj.format === 'roundrobin' && obj.round > 0 && !Array.isArray(obj.schedule)) {
+    throw new Error('A ese torneo de liga le falta el calendario: no se puede continuar.');
+  }
+  if (obj.format === 'knockout' && obj.round > 0 && !obj.knockout) {
+    throw new Error('A esa eliminatoria le falta el cuadro: no se puede continuar.');
+  }
+  /* Sin el numero de rondas no hay forma de saber cuando termina, e `isFinished`
+     lo daba por acabado en cuanto se jugaba una: un torneo a medias se cerraba
+     solo. serialize siempre lo escribe, asi que si falta es que los datos
+     vienen rotos y es mejor decirlo. */
+  const rondasGuardadas = Number(obj.rounds);
+  if (!Number.isFinite(rondasGuardadas) || rondasGuardadas < 1) {
+    throw new Error('A ese torneo le falta el número de rondas: no se puede continuar.');
+  }
+
   return {
     id: String(obj.id),
     name: String(obj.name),
@@ -857,8 +907,8 @@ export function deserialize(obj) {
     doubleRound: !!obj.doubleRound,
     seed: toFinite(Number(obj.seed), 1),
     rngState: toFinite(Number(obj.rngState), 1) >>> 0,
-    rounds: toFinite(Number(obj.rounds), 0),
-    round: toFinite(Number(obj.round), 0),
+    rounds: Math.floor(rondasGuardadas),
+    round: Math.max(0, toFinite(Number(obj.round), 0)),
     status: obj.status === 'running' || obj.status === 'finished' ? obj.status : 'pending',
     timeControl: {
       base: toFinite(obj.timeControl && Number(obj.timeControl.base), 300),
@@ -879,7 +929,13 @@ export function deserialize(obj) {
       slot: toFinite(Number(g.slot), 0),
       white: g.white === null || g.white === undefined ? null : String(g.white),
       black: g.black === null || g.black === undefined ? null : String(g.black),
-      result: g.result === null || g.result === undefined ? null : String(g.result),
+      /* Un resultado que no se reconoce NO puede colarse. Antes entraba tal
+         cual y en computeStats `1 - null` da 1: unas tablas guardadas como
+         «1/2» o «½-½» se convertian en victoria de las negras, en silencio.
+         Y una cadena vacia dejaba una partida fantasma: ni puntuaba ni salia
+         como pendiente, y el torneo se daba por terminado sin poder
+         arreglarla. */
+      result: resultadoValido(g.result) ? String(g.result) : null,
       suddenDeath: !!g.suddenDeath,
       parent: g.parent === null || g.parent === undefined ? null : String(g.parent)
     })),
